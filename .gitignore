@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv
+venv/
+env/
+.env
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node/React
+node_modules/
+dist/
+dist-ssr/
+*.local
+.eslintcache
+
+# System/IDE
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# SignalFeed Custom
+data/
+db_data/
+logs/
+*.db

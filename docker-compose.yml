@@ -1,0 +1,74 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: db
+    environment:
+      POSTGRES_USER: feed_user
+      POSTGRES_PASSWORD: feed_password
+      POSTGRES_DB: feed_db
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U feed_user -d feed_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: backend
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://feed_user:feed_password@db:5432/feed_db
+      EMBEDDING_DIM: 2048
+      EMBEDDING_MODEL: nvidia/llama-nemotron-embed-vl-1b-v2
+      NVIDIA_API_EMBEDDING: ${NVIDIA_API_EMBEDDING}
+      NVIDIA_API_KEY1: ${NVIDIA_API_KEY1}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  jobs-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: jobs-worker
+    command: python -m app.jobs.coordinator
+    volumes:
+      - ./backend:/app
+    environment:
+      DATABASE_URL: postgresql://feed_user:feed_password@db:5432/feed_db
+      EMBEDDING_DIM: 2048
+      EMBEDDING_MODEL: nvidia/llama-nemotron-embed-vl-1b-v2
+      NVIDIA_API_EMBEDDING: ${NVIDIA_API_EMBEDDING}
+      NVIDIA_API_KEY1: ${NVIDIA_API_KEY1}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      VITE_API_URL: http://localhost:8000/api
+    depends_on:
+      - backend
+    command: npm run dev -- --host
+
+volumes:
+  db_data:
