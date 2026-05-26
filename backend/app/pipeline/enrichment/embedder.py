@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
+from app.database import SessionLocal
 from app.config import settings
 from app.models import EmbeddingCache
 from app.services.embedding_provider import NvidiaEmbeddingProvider, OpenAIEmbeddingProvider
