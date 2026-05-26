@@ -54,16 +54,43 @@ async def run_maintenance_sweep():
 def main():
     scheduler = AsyncIOScheduler()
     
-    # Coordinated continuous pipeline sweep scheduled every 10 minutes
+    # 1. Ingestion of subscribed feeds: scheduled every 15 minutes
     scheduler.add_job(
-        run_pipeline_sweep, 
+        run_ingestion, 
         'interval', 
-        minutes=10, 
-        id='full_pipeline_job', 
+        minutes=15, 
+        id='ingestion_job', 
         replace_existing=True
     )
     
-    # Schedule DB cleanup and telemetry auto-tuning job every 60 minutes
+    # 2. Dynamic discovery: scheduled every 30 minutes (to avoid heavy API usage)
+    scheduler.add_job(
+        run_discovery, 
+        'interval', 
+        minutes=30, 
+        id='discovery_job', 
+        replace_existing=True
+    )
+    
+    # 3. Transcript crawl & chunking: scheduled every 2 minutes for continuous, rapid throughput
+    scheduler.add_job(
+        run_chunk_processing, 
+        'interval', 
+        minutes=2, 
+        id='chunk_processing_job', 
+        replace_existing=True
+    )
+    
+    # 4. Bulk vector generation & embedding: scheduled every 2 minutes for real-time indexing
+    scheduler.add_job(
+        run_vector_processing, 
+        'interval', 
+        minutes=2, 
+        id='vector_processing_job', 
+        replace_existing=True
+    )
+    
+    # 5. Maintenance / Telemetry auto-tuning: scheduled every 60 minutes
     scheduler.add_job(
         run_maintenance_sweep,
         'interval',
@@ -72,13 +99,12 @@ def main():
         replace_existing=True
     )
     
-    # Inject a one-shot trigger to run IMMEDIATELY on boot
-    scheduler.add_job(
-        run_pipeline_sweep,
-        id='boot_sync_trigger'
-    )
+    # Inject one-shot triggers to kickstart processing immediately on service boot
+    scheduler.add_job(run_ingestion, id='boot_ingest_trigger')
+    scheduler.add_job(run_chunk_processing, id='boot_chunk_trigger')
+    scheduler.add_job(run_vector_processing, id='boot_vector_trigger')
     
-    logger.info("SignalFeed Coordinated jobs worker scheduler successfully running!")
+    logger.info("SignalFeed Coordinated jobs worker scheduler successfully running with independent concurrent threads!")
     scheduler.start()
     
     # Keep the async event loop thread process active
@@ -89,3 +115,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
