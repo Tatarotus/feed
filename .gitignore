@@ -30,3 +30,4 @@ data/
 db_data/
 logs/
 *.db
+.antigravitycli/
