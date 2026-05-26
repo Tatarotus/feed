@@ -109,82 +109,109 @@ async def run_discovery():
     Background job that automatically queries Invidious search for user interest topics,
     discovers out-of-network channels/videos, and inserts them in a pending state.
     """
+async def run_discovery():
+    """
+    Sweeps the web for channels and videos matching followed topics,
+    discovers out-of-network channels/videos, and inserts them in a pending state.
+    """
+    # 1. Fetch interest topics in a short-lived session
     db = SessionLocal()
     try:
-        # Fetch active interest topics
         interests = db.scalars(select(Interest).where(Interest.user_id == 1)).all()
-        if not interests:
-            logger.info("No active interest topics registered. Discovery job idle.")
-            return
+        # Extract fields to avoid lazy-loading issues once the session is closed
+        topic_queries = [(i.id, i.topic) for i in interests]
+    except Exception as e:
+        logger.error(f"Error fetching interests for discovery: {str(e)}")
+        return
+    finally:
+        db.close()
 
-        logger.info(f"Starting discovery sweep across {len(interests)} followed interest tracks...")
-        total_discovered_videos = 0
-        total_discovered_channels = 0
+    if not topic_queries:
+        logger.info("No active interest topics registered. Discovery job idle.")
+        return
 
-        for interest in interests:
-            # Skip manual video seeds (which start with 'Seed:') for raw keyword searches
-            topic_query = interest.topic
-            if topic_query.startswith("Seed:"):
-                # Use title without the 'Seed:' prefix
-                topic_query = topic_query.replace("Seed:", "").strip()
+    logger.info(f"Starting discovery sweep across {len(topic_queries)} followed interest tracks...")
+    total_discovered_videos = 0
+    total_discovered_channels = 0
 
-            logger.info(f"Discovering adjacent content for interest topic: '{topic_query}'")
-            # Fetch top 5 videos for this interest
+    for interest_id, topic in topic_queries:
+        topic_query = topic
+        if topic_query.startswith("Seed:"):
+            topic_query = topic_query.replace("Seed:", "").strip()
+
+        logger.info(f"Discovering adjacent content for interest topic: '{topic_query}'")
+        try:
             discovered_items = await search_invidious_videos(topic_query, limit=5)
-            
-            for item in discovered_items:
-                video_id = item.get("videoId")
-                if not video_id:
-                    continue
+        except Exception as e:
+            logger.error(f"Failed to search videos for topic '{topic_query}': {str(e)}")
+            continue
+        
+        for item in discovered_items:
+            video_id = item.get("videoId")
+            if not video_id:
+                continue
 
-                channel_id = item.get("authorId")
-                channel_title = item.get("author", "Discovered Channel")
-                if not channel_id:
-                    continue
+            channel_id = item.get("authorId")
+            channel_title = item.get("author", "Discovered Channel")
+            if not channel_id:
+                continue
 
-                # 1. Channel Discovery: Add channel if not already in system
+            # 2. Check channel existence and get details without open transaction
+            channel_exists = False
+            db = SessionLocal()
+            try:
+                existing_channel = db.scalar(select(Channel).where(Channel.id == channel_id))
+                if existing_channel:
+                    channel_exists = True
+            except Exception as e:
+                logger.error(f"Error checking channel existence: {str(e)}")
+            finally:
+                db.close()
+
+            avatar_url = None
+            if not channel_exists:
+                # Fetch avatar url over network without any DB connection held
+                try:
+                    avatar_url = await fetch_channel_avatar(channel_id)
+                except Exception as e:
+                    logger.warning(f"Failed to fetch avatar for {channel_id}: {str(e)}")
+
+            # 3. Short-lived session to insert channel and video safely
+            db = SessionLocal()
+            try:
                 existing_channel = db.scalar(select(Channel).where(Channel.id == channel_id))
                 if not existing_channel:
                     logger.info(f"Discovered new out-of-network channel: '{channel_title}' ({channel_id})")
                     rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
-                    
-                    # Fetch channel icon avatar in background
-                    avatar_url = await fetch_channel_avatar(channel_id)
-                    
                     new_channel = Channel(
                         id=channel_id,
                         title=channel_title,
-                        description=f"Auto-discovered channel related to: '{interest.topic}'",
+                        description=f"Auto-discovered channel related to: '{topic}'",
                         rss_url=rss_url,
                         provider="rss",
-                        is_trusted=False,  # Discovery channels are not trusted by default
-                        is_subscribed=False,  # Out-of-network flag!
-                        thumbnail_url=avatar_url,  # Store the channel icon avatar URL!
+                        is_trusted=False,
+                        is_subscribed=False,
+                        thumbnail_url=avatar_url,
                         quality_score=0.8,
                         preference_score=1.0,
                         polling_interval_minutes=360
                     )
                     db.add(new_channel)
                     total_discovered_channels += 1
-                    # Flush to get channel bound before video insert
                     db.flush()
 
-                # 2. Video Discovery: Add video if not already in system
                 existing_video = db.scalar(select(Video).where(Video.id == video_id))
                 if not existing_video:
                     title = item.get("title", "Untitled Discovered Video")
                     description = item.get("description", "")
                     
-                    # Parse published timestamp or use current time
                     published_timestamp = item.get("published")
                     try:
                         publish_date = datetime.fromtimestamp(published_timestamp, tz=timezone.utc)
                     except Exception:
                         publish_date = datetime.now(timezone.utc)
 
-                    # Always use robust, direct YouTube CDN thumbnail url to guarantee 100% loading reliability in user browser
                     thumbnail_url = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
-
                     video_url = f"https://www.youtube.com/watch?v={video_id}"
 
                     new_video = Video(
@@ -195,29 +222,29 @@ async def run_discovery():
                         thumbnail_url=thumbnail_url,
                         publish_date=publish_date,
                         url=video_url,
-                        processing_status="pending",  # Processed asynchronously by pipeline
+                        processing_status="pending",
                         raw_metadata={
                             "view_count": item.get("viewCount", 0),
                             "author": channel_title,
                             "length_seconds": item.get("lengthSeconds", 0),
-                            "discovery_seed_topic": interest.topic
+                            "discovery_seed_topic": topic
                         }
                     )
                     db.add(new_video)
                     total_discovered_videos += 1
-            
-            # Commit after each interest to persist progress
-            db.commit()
-            # Play nice with external api limits
-            await asyncio.sleep(1.0)
+                
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                logger.error(f"Error inserting discovered items: {str(e)}")
+            finally:
+                db.close()
 
-        logger.info(f"Discovery sweep completed. Created {total_discovered_channels} new channels and {total_discovered_videos} discovery videos in a pending state.")
+        # Play nice with external api limits
+        await asyncio.sleep(1.0)
 
-    except Exception as e:
-        logger.error(f"Error running discovery pipeline: {str(e)}")
-        db.rollback()
-    finally:
-        db.close()
+    logger.info(f"Discovery sweep completed. Created {total_discovered_channels} new channels and {total_discovered_videos} discovery videos in a pending state.")
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")

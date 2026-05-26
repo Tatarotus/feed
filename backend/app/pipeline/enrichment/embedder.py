@@ -43,6 +43,7 @@ class EmbedderService:
         """
         Generate a single vector embedding for a text string.
         Checks in-memory query cache, then SQL cache, falling back to external API.
+        Uses short-lived database sessions internally to avoid holding connections open during network calls.
         """
         if not text.strip():
             return [0.0] * settings.EMBEDDING_DIM
@@ -56,16 +57,22 @@ class EmbedderService:
 
         text_hash = self.compute_hash(text_clean)
 
-        # 2. SQL Database Cache Lookup
-        if db and settings.EMBEDDING_CACHE_ENABLED:
-            cached = db.scalar(select(EmbeddingCache).where(EmbeddingCache.text_hash == text_hash))
-            if cached:
-                logger.debug(f"SQL cache HIT for text hash {text_hash[:8]}")
-                # Save to in-memory cache for subsequent calls
-                self._query_cache[text_clean] = cached.embedding
-                return cached.embedding
+        # 2. SQL Database Cache Lookup (using short-lived session)
+        if settings.EMBEDDING_CACHE_ENABLED:
+            cache_db = SessionLocal()
+            try:
+                cached = cache_db.scalar(select(EmbeddingCache).where(EmbeddingCache.text_hash == text_hash))
+                if cached:
+                    logger.debug(f"SQL cache HIT for text hash {text_hash[:8]}")
+                    # Save to in-memory cache for subsequent calls
+                    self._query_cache[text_clean] = cached.embedding
+                    return cached.embedding
+            except Exception as cache_err:
+                logger.warning(f"SQL cache read failed (non-blocking): {str(cache_err)}")
+            finally:
+                cache_db.close()
 
-        # 3. Cache Miss: Request from API provider
+        # 3. Cache Miss: Request from API provider (WITHOUT active database connection)
         try:
             logger.debug(f"Cache MISS for '{text_clean[:20]}'. Querying external API...")
             vectors = await self.provider.embed([text_clean], input_type=input_type)
@@ -74,8 +81,9 @@ class EmbedderService:
             # Save to in-memory cache
             self._query_cache[text_clean] = vector
 
-            # Save to SQL Cache
-            if db and settings.EMBEDDING_CACHE_ENABLED:
+            # Save to SQL Cache (using separate short-lived session)
+            if settings.EMBEDDING_CACHE_ENABLED:
+                cache_db = SessionLocal()
                 try:
                     new_cache = EmbeddingCache(
                         text_hash=text_hash,
@@ -83,11 +91,13 @@ class EmbedderService:
                         model=settings.EMBEDDING_MODEL,
                         embedding=vector
                     )
-                    db.add(new_cache)
-                    db.commit()
+                    cache_db.add(new_cache)
+                    cache_db.commit()
                 except Exception as cache_err:
-                    db.rollback()
+                    cache_db.rollback()
                     logger.warning(f"Failed to save embedding to SQL cache (non-blocking): {str(cache_err)}")
+                finally:
+                    cache_db.close()
 
             return vector
             
@@ -98,6 +108,7 @@ class EmbedderService:
     async def generate_embeddings_batch(self, texts: List[str], db: Optional[Session] = None, input_type: str = "passage") -> List[List[float]]:
         """
         Generate vectors in an optimized batch API sweep.
+        Uses short-lived database sessions internally for caching reads and writes.
         """
         if not texts:
             return []
@@ -115,37 +126,48 @@ class EmbedderService:
             if text_clean in self._query_cache:
                 results[idx] = self._query_cache[text_clean]
 
-        # Bulk SQL Database Cache Query for remainders
+        # Bulk SQL Database Cache Query for remainders (using short-lived session)
         remainders_indices = [i for i, v in enumerate(results) if v is None]
         
-        if remainders_indices and db and settings.EMBEDDING_CACHE_ENABLED:
-            remainder_hashes = [hashes[i] for i in remainders_indices]
-            stmt = select(EmbeddingCache).where(EmbeddingCache.text_hash.in_(remainder_hashes))
-            cached_records = db.scalars(stmt).all()
-            
-            cache_map = {rec.text_hash: rec.embedding for rec in cached_records}
-            
-            for idx in remainders_indices:
-                text_hash = hashes[idx]
-                text_clean = texts[idx].strip()
-                if text_hash in cache_map:
-                    vector = cache_map[text_hash]
-                    results[idx] = vector
-                    self._query_cache[text_clean] = vector  # Cache in-memory
-                else:
+        if remainders_indices and settings.EMBEDDING_CACHE_ENABLED:
+            cache_db = SessionLocal()
+            try:
+                remainder_hashes = [hashes[i] for i in remainders_indices]
+                stmt = select(EmbeddingCache).where(EmbeddingCache.text_hash.in_(remainder_hashes))
+                cached_records = cache_db.scalars(stmt).all()
+                
+                cache_map = {rec.text_hash: rec.embedding for rec in cached_records}
+                
+                for idx in remainders_indices:
+                    text_hash = hashes[idx]
+                    text_clean = texts[idx].strip()
+                    if text_hash in cache_map:
+                        vector = cache_map[text_hash]
+                        results[idx] = vector
+                        self._query_cache[text_clean] = vector  # Cache in-memory
+                    else:
+                        miss_indices.append(idx)
+                        miss_texts.append(texts[idx])
+                        miss_hashes.append(text_hash)
+                        
+                logger.info(f"Batch cache lookup complete. hits: {len(cached_records)}, misses: {len(miss_indices)}")
+            except Exception as cache_err:
+                logger.warning(f"SQL batch cache read failed (non-blocking): {str(cache_err)}")
+                # Treat all remainders as misses
+                for idx in remainders_indices:
                     miss_indices.append(idx)
                     miss_texts.append(texts[idx])
-                    miss_hashes.append(text_hash)
-                    
-            logger.info(f"Batch cache lookup complete. hits: {len(cached_records)}, misses: {len(miss_indices)}")
+                    miss_hashes.append(hashes[idx])
+            finally:
+                cache_db.close()
         else:
-            # If no DB or no hits, populate miss index lists for remainders
+            # If no hits, populate miss index lists for remainders
             for idx in remainders_indices:
                 miss_indices.append(idx)
                 miss_texts.append(texts[idx])
                 miss_hashes.append(hashes[idx])
 
-        # Request Cache Misses from API in batch
+        # Request Cache Misses from API in batch (WITHOUT active database connection)
         if miss_texts:
             try:
                 api_vectors = await self.provider.embed(miss_texts, input_type=input_type)
@@ -158,7 +180,7 @@ class EmbedderService:
                     
                     self._query_cache[text_clean] = vector  # Cache in-memory
                     
-                    if db and settings.EMBEDDING_CACHE_ENABLED:
+                    if settings.EMBEDDING_CACHE_ENABLED:
                         new_cache_rows.append(
                             EmbeddingCache(
                                 text_hash=miss_hashes[idx],
@@ -168,14 +190,17 @@ class EmbedderService:
                             )
                         )
                 
-                if db and settings.EMBEDDING_CACHE_ENABLED and new_cache_rows:
+                if settings.EMBEDDING_CACHE_ENABLED and new_cache_rows:
+                    cache_db = SessionLocal()
                     try:
-                        db.add_all(new_cache_rows)
-                        db.commit()
+                        cache_db.add_all(new_cache_rows)
+                        cache_db.commit()
                         logger.info(f"Bulk saved {len(new_cache_rows)} new vectors to SQL cache.")
                     except Exception as cache_err:
-                        db.rollback()
+                        cache_db.rollback()
                         logger.warning(f"Bulk cache save failed (non-blocking): {str(cache_err)}")
+                    finally:
+                        cache_db.close()
 
             except Exception as e:
                 logger.error(f"Batch API embedding request failed: {str(e)}")
@@ -193,3 +218,4 @@ class EmbedderService:
 
 # Expose global service instance
 embedder = EmbedderService()
+
