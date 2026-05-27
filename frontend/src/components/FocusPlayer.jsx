@@ -17,7 +17,21 @@ export default function FocusPlayer({ video, onClose }) {
   const [liked, setLiked] = useState(false);
   const [disliked, setDisliked] = useState(false);
 
+  const isVisible = !!video;
+  const displayVideo = video || { id: '', title: '', channel: null };
+
+  // Reset feedback interaction states when video changes
   useEffect(() => {
+    setLiked(false);
+    setDisliked(false);
+  }, [video?.id]);
+
+  useEffect(() => {
+    if (!video) {
+      document.body.style.overflow = 'unset';
+      return;
+    }
+
     // Log watch start telemetry event
     api.logEvent(video.id, "watch", 10.0);
     
@@ -31,13 +45,15 @@ export default function FocusPlayer({ video, onClose }) {
   }, [video]);
 
   const handleClose = () => {
-    // Log completed watch session upon modal close
-    api.logEvent(video.id, "watch", 100.0);
+    if (video) {
+      // Log completed watch session upon modal close
+      api.logEvent(video.id, "watch", 100.0);
+    }
     onClose();
   };
 
   const handleLike = async () => {
-    if (liked) return;
+    if (!video || liked) return;
     try {
       await api.likeVideo(video.id);
       setLiked(true);
@@ -48,7 +64,7 @@ export default function FocusPlayer({ video, onClose }) {
   };
 
   const handleDislike = async () => {
-    if (disliked) return;
+    if (!video || disliked) return;
     try {
       await api.dislikeVideo(video.id);
       setDisliked(true);
@@ -59,7 +75,14 @@ export default function FocusPlayer({ video, onClose }) {
   };
 
   return (
-    <div className="focus-player-overlay" onClick={handleClose}>
+    <div 
+      className="focus-player-overlay" 
+      onClick={handleClose}
+      style={{
+        display: isVisible ? 'flex' : 'none',
+        pointerEvents: isVisible ? 'auto' : 'none'
+      }}
+    >
       <button 
         className="focus-player-close" 
         onClick={handleClose}
@@ -93,8 +116,8 @@ export default function FocusPlayer({ video, onClose }) {
           <iframe
             width="100%"
             height="100%"
-            src={`https://www.youtube.com/embed/${video.id}?autoplay=1&rel=0&showinfo=0&iv_load_policy=3&modestbranding=1`}
-            title={video.title}
+            src={video ? `https://www.youtube.com/embed/${video.id}?autoplay=1&rel=0&showinfo=0&iv_load_policy=3&modestbranding=1` : "about:blank"}
+            title={displayVideo.title}
             frameBorder="0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen
@@ -105,9 +128,9 @@ export default function FocusPlayer({ video, onClose }) {
         {/* Video metadata and premium feedback controls */}
         <div className="player-control-bar">
           <div className="player-meta">
-            <h2 className="player-title" title={video.title}>{video.title}</h2>
-            <div className="player-channel" title={video.channel ? video.channel.title : "Channel"}>
-              {video.channel ? video.channel.custom_name || video.channel.title : "Unknown Channel"}
+            <h2 className="player-title" title={displayVideo.title}>{displayVideo.title}</h2>
+            <div className="player-channel" title={displayVideo.channel ? displayVideo.channel.title : "Channel"}>
+              {displayVideo.channel ? displayVideo.channel.custom_name || displayVideo.channel.title : "Unknown Channel"}
             </div>
           </div>
 

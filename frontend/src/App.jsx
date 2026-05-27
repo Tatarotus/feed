@@ -20,7 +20,22 @@ export default function App() {
   const [learningMode, setLearningMode] = useState(false);
   const [serendipity, setSerendipity] = useState(0.2); // Default to Balanced (20%)
   const latestFeedRequestId = useRef(0);
-  const [activeVideo, setActiveVideo] = useState(null);
+  const [activeVideo, setActiveVideo] = useState(() => {
+    const val = localStorage.getItem('activeVideo');
+    try {
+      return val ? JSON.parse(val) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+  const handlePlayVideo = (video) => {
+    setActiveVideo(video);
+    if (video) {
+      localStorage.setItem('activeVideo', JSON.stringify(video));
+    } else {
+      localStorage.removeItem('activeVideo');
+    }
+  };
   const [currentView, setCurrentView] = useState("feed"); // 'feed', 'seeds'
   
   // Sidebar visibility states (persisted in localStorage)
@@ -310,7 +325,7 @@ export default function App() {
               feed={feed}
               loading={feedLoading}
               onRefresh={handleRefreshAll}
-              onPlayVideo={setActiveVideo}
+              onPlayVideo={handlePlayVideo}
               onQueueUpdate={loadQueue}
               calmMode={calmMode}
               learningMode={learningMode}
@@ -330,18 +345,16 @@ export default function App() {
           <QueuePanel 
             queue={queue}
             onRefreshQueue={loadQueue}
-            onPlayVideo={setActiveVideo}
+            onPlayVideo={handlePlayVideo}
           />
         </aside>
       </div>
 
       {/* Focused overlay player */}
-      {activeVideo && (
-        <FocusPlayer 
-          video={activeVideo} 
-          onClose={() => setActiveVideo(null)} 
-        />
-      )}
+      <FocusPlayer 
+        video={activeVideo} 
+        onClose={() => handlePlayVideo(null)} 
+      />
     </div>
   );
 }
