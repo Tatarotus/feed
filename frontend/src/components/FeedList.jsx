@@ -1,6 +1,163 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 
+function CliLoadingDashboard() {
+  const [step, setStep] = useState(0);
+  const [logs, setLogs] = useState([]);
+  
+  const stepLogs = [
+    { prefix: "SYSTEM", text: "Booting active learning retrieval pipeline...", color: "var(--accent)" },
+    { prefix: "DB", text: "Connecting to PostgreSQL pgvector space (127.0.0.1:5432)...", color: "var(--text-muted)" },
+    { prefix: "DB", text: "Scanning 2048-dim Llama-Nemotron vector index...", color: "var(--text-muted)" },
+    { prefix: "STAGE 1", text: "Querying semantic affinity candidates (threshold >= 0.35)...", color: "var(--accent)" },
+    { prefix: "STAGE 1", text: "Fetching serendipity exploration adjacent interest pools...", color: "var(--accent)" },
+    { prefix: "STAGE 1", text: "Completed. Retrieved 350 candidate streams.", color: "var(--success)" },
+    { prefix: "STAGE 2", text: "Commencing multi-criteria reranking sweep...", color: "var(--accent)" },
+    { prefix: "STAGE 2", text: "Checking negative telemetry logs and active dismissals...", color: "var(--text-muted)" },
+    { prefix: "STAGE 2", text: "Applying clickbait penalty heuristics & decay functions...", color: "var(--text-muted)" },
+    { prefix: "STAGE 2", text: "Interleaving discovery pool via cumulative ratio interleave...", color: "var(--accent)" },
+    { prefix: "STAGE 2", text: "Spacing grid layout blocks for premium UX contrast...", color: "var(--text-muted)" },
+    { prefix: "SYSTEM", text: "Generating final recommendation matrices...", color: "var(--accent)" },
+    { prefix: "SUCCESS", text: "Output compiled! Ready for render.", color: "var(--success)" }
+  ];
+
+  useEffect(() => {
+    setStep(0);
+    setLogs([{
+      time: new Date().toLocaleTimeString(),
+      prefix: "SYSTEM",
+      text: "Booting active learning retrieval pipeline...",
+      color: "var(--accent)"
+    }]);
+
+    const interval = setInterval(() => {
+      setStep(prev => {
+        const next = prev + 1;
+        if (next < stepLogs.length) {
+          setLogs(current => [
+            ...current,
+            {
+              time: new Date().toLocaleTimeString(),
+              prefix: stepLogs[next].prefix,
+              text: stepLogs[next].text,
+              color: stepLogs[next].color
+            }
+          ]);
+          return next;
+        } else {
+          setLogs([{
+            time: new Date().toLocaleTimeString(),
+            prefix: "SYSTEM",
+            text: "Booting active learning retrieval pipeline...",
+            color: "var(--accent)"
+          }]);
+          return 0;
+        }
+      });
+    }, 450);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const progress = Math.min(Math.round((step / (stepLogs.length - 1)) * 100), 100);
+  
+  const getProgressBar = (pct) => {
+    const totalBlocks = 15;
+    const filledBlocks = Math.round((pct / 100) * totalBlocks);
+    const emptyBlocks = totalBlocks - filledBlocks;
+    return "▰".repeat(filledBlocks) + "▱".repeat(emptyBlocks);
+  };
+
+  return (
+    <div style={{
+      gridColumn: '1 / -1',
+      maxWidth: '650px',
+      margin: '40px auto',
+      width: '100%',
+      backgroundColor: '#09090b',
+      border: '1px solid var(--border-subtle)',
+      borderRadius: '8px',
+      overflow: 'hidden',
+      boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
+      fontFamily: "'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace",
+      fontSize: '0.8rem',
+      textAlign: 'left'
+    }}>
+      <div style={{
+        backgroundColor: '#18181b',
+        padding: '10px 14px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        borderBottom: '1px solid var(--border-subtle)'
+      }}>
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#ef4444', display: 'inline-block' }}></span>
+          <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#eab308', display: 'inline-block' }}></span>
+          <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#22c55e', display: 'inline-block' }}></span>
+        </div>
+        <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 'bold' }}>
+          terminal - active_learning_engine
+        </div>
+        <div style={{ width: '38px' }}></div>
+      </div>
+      
+      <div style={{
+        padding: '16px',
+        color: '#f4f4f5',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '6px',
+        height: '240px',
+        overflowY: 'auto',
+        scrollbarWidth: 'none'
+      }}>
+        {logs.map((log, i) => (
+          <div key={i} style={{ display: 'flex', gap: '8px', lineHeight: '1.4' }}>
+            <span style={{ color: 'var(--text-muted)' }}>[{log.time}]</span>
+            <span style={{ color: log.color, fontWeight: 'bold' }}>[{log.prefix}]</span>
+            <span style={{ color: log.prefix === 'SUCCESS' ? 'var(--success)' : '#e4e4e7' }}>{log.text}</span>
+          </div>
+        ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--accent)', fontWeight: 'bold' }}>
+          <span>$</span>
+          <span style={{
+            display: 'inline-block',
+            width: '8px',
+            height: '14px',
+            backgroundColor: 'var(--accent)',
+            animation: 'blink 1s step-end infinite'
+          }}></span>
+        </div>
+      </div>
+
+      <div style={{
+        backgroundColor: '#18181b',
+        padding: '12px 16px',
+        borderTop: '1px solid var(--border-subtle)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        color: 'var(--text-secondary)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{ color: 'var(--accent)', fontWeight: 'bold' }}>COMPUTING</span>
+          <span style={{ color: 'var(--text-muted)' }}>{getProgressBar(progress)}</span>
+        </div>
+        <div style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>
+          {progress}%
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes blink {
+          50% { opacity: 0; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
 const BookmarkIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="action-svg">
     <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
@@ -218,9 +375,7 @@ export default function FeedList({
       {/* 2. YouTube-style Video Card Grid */}
       <div className="video-grid">
         {loading && filteredFeed.length === 0 ? (
-          <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>
-            Generating Stage 1 and Stage 2 recommendation matrices...
-          </div>
+          <CliLoadingDashboard />
         ) : filteredFeed.length === 0 ? (
           <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>
             No parsed videos in catalog. Trigger a manual sync or subscribe to channels in the config sidebar.

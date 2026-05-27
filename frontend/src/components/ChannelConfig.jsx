@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../utils/api';
+import { SignalLogo } from './SignalLogo';
 
 export default function ChannelConfig({ onSyncComplete, serendipity = 0.2, onSerendipityChange, onManageSeeds }) {
   const [channels, setChannels] = useState([]);
@@ -297,7 +298,8 @@ export default function ChannelConfig({ onSyncComplete, serendipity = 0.2, onSer
             onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.98)'}
             onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
           >
-            📡 Manage Topics & Seeds
+            <SignalLogo style={{ width: '15px', height: '15px' }} />
+            <span>Manage Topics & Seeds</span>
           </button>
         </div>
 

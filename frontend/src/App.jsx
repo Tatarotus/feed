@@ -6,6 +6,7 @@ import QueuePanel from './components/QueuePanel';
 import ChannelConfig from './components/ChannelConfig';
 import FocusPlayer from './components/FocusPlayer';
 import SeedsPage from './components/SeedsPage';
+import { SignalLogo, SearchIcon, QueueIcon, ThemeIcon } from './components/SignalLogo';
 
 export default function App() {
   const [onboarded, setOnboarded] = useState(true);
@@ -231,8 +232,9 @@ export default function App() {
           >
             ☰
           </button>
-          <div className="app-header-brand" onClick={clearSearch}>
-            📡 SignalFeed <span>v0.1</span>
+          <div className="app-header-brand" onClick={clearSearch} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <SignalLogo style={{ width: '22px', height: '22px' }} />
+            <span>SignalFeed</span> <span style={{ fontSize: '0.62rem', opacity: 0.6, fontWeight: 'normal', backgroundColor: 'var(--bg-card)', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--border-subtle)' }}>v0.1</span>
           </div>
         </div>
 
@@ -250,8 +252,9 @@ export default function App() {
               ✕
             </button>
           )}
-          <button type="submit" className="search-submit-btn">
-            🔍 Search
+          <button type="submit" className="search-submit-btn" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <SearchIcon style={{ width: '13px', height: '13px' }} />
+            <span>Search</span>
           </button>
         </form>
 
@@ -264,6 +267,9 @@ export default function App() {
           <button 
             onClick={() => setShowQueueSidebar(!showQueueSidebar)}
             style={{ 
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
               background: showQueueSidebar ? 'var(--bg-card)' : 'transparent',
               borderColor: showQueueSidebar ? 'var(--border-focus)' : 'var(--border-subtle)',
               fontSize: '0.74rem', 
@@ -273,7 +279,8 @@ export default function App() {
             }}
             title="Toggle See Later Queue (Right)"
           >
-            📑 {showQueueSidebar ? 'Queue Active' : 'Show Queue'}
+            <QueueIcon style={{ width: '12px', height: '12px' }} />
+            <span>{showQueueSidebar ? 'Queue Active' : 'Show Queue'}</span>
           </button>
           
           <span style={{ borderLeft: '1px solid var(--border-subtle)', height: '16px' }}></span>
@@ -284,16 +291,16 @@ export default function App() {
             style={{ 
               background: 'transparent',
               border: 'none',
-              fontSize: '1.15rem',
               cursor: 'pointer',
               padding: '4px 8px',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
+              color: 'var(--text-secondary)'
             }}
             title={lightTheme ? "Toggle Obsidian Dark Theme" : "Toggle Zinc Light Theme"}
           >
-            {lightTheme ? '🌙' : '☀️'}
+            <ThemeIcon light={lightTheme} style={{ width: '18px', height: '18px' }} />
           </button>
         </div>
       </header>
