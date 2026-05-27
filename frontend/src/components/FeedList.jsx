@@ -2,156 +2,97 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 
 function CliLoadingDashboard() {
-  const [step, setStep] = useState(0);
-  const [logs, setLogs] = useState([]);
-  
-  const stepLogs = [
-    { prefix: "SYSTEM", text: "Booting active learning retrieval pipeline...", color: "var(--accent)" },
-    { prefix: "DB", text: "Connecting to PostgreSQL pgvector space (127.0.0.1:5432)...", color: "var(--text-muted)" },
-    { prefix: "DB", text: "Scanning 2048-dim Llama-Nemotron vector index...", color: "var(--text-muted)" },
-    { prefix: "STAGE 1", text: "Querying semantic affinity candidates (threshold >= 0.35)...", color: "var(--accent)" },
-    { prefix: "STAGE 1", text: "Fetching serendipity exploration adjacent interest pools...", color: "var(--accent)" },
-    { prefix: "STAGE 1", text: "Completed. Retrieved 350 candidate streams.", color: "var(--success)" },
-    { prefix: "STAGE 2", text: "Commencing multi-criteria reranking sweep...", color: "var(--accent)" },
-    { prefix: "STAGE 2", text: "Checking negative telemetry logs and active dismissals...", color: "var(--text-muted)" },
-    { prefix: "STAGE 2", text: "Applying clickbait penalty heuristics & decay functions...", color: "var(--text-muted)" },
-    { prefix: "STAGE 2", text: "Interleaving discovery pool via cumulative ratio interleave...", color: "var(--accent)" },
-    { prefix: "STAGE 2", text: "Spacing grid layout blocks for premium UX contrast...", color: "var(--text-muted)" },
-    { prefix: "SYSTEM", text: "Generating final recommendation matrices...", color: "var(--accent)" },
-    { prefix: "SUCCESS", text: "Output compiled! Ready for render.", color: "var(--success)" }
-  ];
-
-  useEffect(() => {
-    setStep(0);
-    setLogs([{
-      time: new Date().toLocaleTimeString(),
-      prefix: "SYSTEM",
-      text: "Booting active learning retrieval pipeline...",
-      color: "var(--accent)"
-    }]);
-
-    const interval = setInterval(() => {
-      setStep(prev => {
-        const next = prev + 1;
-        if (next < stepLogs.length) {
-          setLogs(current => [
-            ...current,
-            {
-              time: new Date().toLocaleTimeString(),
-              prefix: stepLogs[next].prefix,
-              text: stepLogs[next].text,
-              color: stepLogs[next].color
-            }
-          ]);
-          return next;
-        } else {
-          setLogs([{
-            time: new Date().toLocaleTimeString(),
-            prefix: "SYSTEM",
-            text: "Booting active learning retrieval pipeline...",
-            color: "var(--accent)"
-          }]);
-          return 0;
-        }
-      });
-    }, 450);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  const progress = Math.min(Math.round((step / (stepLogs.length - 1)) * 100), 100);
-  
-  const getProgressBar = (pct) => {
-    const totalBlocks = 15;
-    const filledBlocks = Math.round((pct / 100) * totalBlocks);
-    const emptyBlocks = totalBlocks - filledBlocks;
-    return "▰".repeat(filledBlocks) + "▱".repeat(emptyBlocks);
-  };
-
   return (
     <div style={{
       gridColumn: '1 / -1',
-      maxWidth: '650px',
-      margin: '40px auto',
-      width: '100%',
-      backgroundColor: '#09090b',
-      border: '1px solid var(--border-subtle)',
-      borderRadius: '8px',
-      overflow: 'hidden',
-      boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
-      fontFamily: "'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace",
-      fontSize: '0.8rem',
-      textAlign: 'left'
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '80px 20px',
+      color: 'var(--text-primary)',
+      textAlign: 'center',
+      maxWidth: '500px',
+      margin: '0 auto'
     }}>
-      <div style={{
-        backgroundColor: '#18181b',
-        padding: '10px 14px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        borderBottom: '1px solid var(--border-subtle)'
-      }}>
-        <div style={{ display: 'flex', gap: '6px' }}>
-          <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#ef4444', display: 'inline-block' }}></span>
-          <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#eab308', display: 'inline-block' }}></span>
-          <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#22c55e', display: 'inline-block' }}></span>
-        </div>
-        <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 'bold' }}>
-          terminal - active_learning_engine
-        </div>
-        <div style={{ width: '38px' }}></div>
-      </div>
-      
-      <div style={{
-        padding: '16px',
-        color: '#f4f4f5',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '6px',
-        height: '240px',
-        overflowY: 'auto',
-        scrollbarWidth: 'none'
-      }}>
-        {logs.map((log, i) => (
-          <div key={i} style={{ display: 'flex', gap: '8px', lineHeight: '1.4' }}>
-            <span style={{ color: 'var(--text-muted)' }}>[{log.time}]</span>
-            <span style={{ color: log.color, fontWeight: 'bold' }}>[{log.prefix}]</span>
-            <span style={{ color: log.prefix === 'SUCCESS' ? 'var(--success)' : '#e4e4e7' }}>{log.text}</span>
-          </div>
-        ))}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--accent)', fontWeight: 'bold' }}>
-          <span>$</span>
-          <span style={{
-            display: 'inline-block',
-            width: '8px',
-            height: '14px',
-            backgroundColor: 'var(--accent)',
-            animation: 'blink 1s step-end infinite'
-          }}></span>
-        </div>
+      {/* Premium Concentric Rotating Spinner with Pulsing Core */}
+      <div style={{ position: 'relative', width: '80px', height: '80px', marginBottom: '24px' }}>
+        {/* Outer rotating ring */}
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          borderRadius: '50%',
+          border: '3px solid transparent',
+          borderTopColor: '#3b82f6',
+          borderRightColor: '#10b981',
+          animation: 'spin 1.2s linear infinite'
+        }}></div>
+        
+        {/* Inner reverse rotating ring */}
+        <div style={{
+          position: 'absolute',
+          top: '8px',
+          left: '8px',
+          right: '8px',
+          bottom: '8px',
+          borderRadius: '50%',
+          border: '2px solid transparent',
+          borderBottomColor: '#2563eb',
+          borderLeftColor: '#3b82f6',
+          opacity: 0.7,
+          animation: 'spin-reverse 1.8s linear infinite'
+        }}></div>
+
+        {/* Central glowing core dot */}
+        <div style={{
+          position: 'absolute',
+          top: '26px',
+          left: '26px',
+          width: '28px',
+          height: '28px',
+          borderRadius: '50%',
+          backgroundColor: '#10b981',
+          boxShadow: '0 0 16px #10b981',
+          animation: 'pulse 2s ease-in-out infinite'
+        }}></div>
       </div>
 
-      <div style={{
-        backgroundColor: '#18181b',
-        padding: '12px 16px',
-        borderTop: '1px solid var(--border-subtle)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        color: 'var(--text-secondary)'
+      {/* Typography */}
+      <h3 style={{
+        fontSize: '1.1rem',
+        fontWeight: '600',
+        marginBottom: '8px',
+        background: 'linear-gradient(135deg, #f4f4f5 30%, #a1a1aa 100%)',
+        WebkitBackgroundClip: 'text',
+        WebkitTextFillColor: 'transparent',
+        letterSpacing: '-0.01em'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <span style={{ color: 'var(--accent)', fontWeight: 'bold' }}>COMPUTING</span>
-          <span style={{ color: 'var(--text-muted)' }}>{getProgressBar(progress)}</span>
-        </div>
-        <div style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>
-          {progress}%
-        </div>
-      </div>
+        Compiling Curation Radar
+      </h3>
+      <p style={{
+        fontSize: '0.82rem',
+        color: 'var(--text-muted)',
+        maxWidth: '320px',
+        lineHeight: '1.5',
+        margin: '0 auto'
+      }}>
+        Querying pgvector embeddings and executing multi-criteria serendipity reranking...
+      </p>
 
+      {/* Styled inline keyframes */}
       <style>{`
-        @keyframes blink {
-          50% { opacity: 0; }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+        @keyframes spin-reverse {
+          to { transform: rotate(-360deg); }
+        }
+        @keyframes pulse {
+          0%, 100% { transform: scale(0.9); opacity: 0.6; }
+          50% { transform: scale(1.1); opacity: 1; box-shadow: 0 0 24px #10b981; }
         }
       `}</style>
     </div>
