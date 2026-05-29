@@ -100,6 +100,7 @@ class InterestResponse(BaseModel):
 class ScoreBreakdown(BaseModel):
     trusted_boost: float
     preference_boost: float
+    subscription_boost: float
     semantic_affinity: float
     clickbait_penalty: float
     negative_demotion: float
@@ -118,3 +119,20 @@ class FeedItemResponse(BaseModel):
 class OnboardingSetup(BaseModel):
     channels: List[ChannelCreate]
     interests: List[str]
+
+# --- Liked Videos ---
+class LikedVideoResponse(BaseModel):
+    id: int
+    user_id: int
+    video_id: str
+    channel_id: str
+    liked_at: datetime
+    semantic_score: float
+    source_bucket: Optional[str] = None
+    watch_duration_seconds: float
+    metadata_json: Dict[str, Any]
+    video: VideoResponse
+    channel: ChannelResponse
+
+    class Config:
+        from_attributes = True

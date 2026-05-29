@@ -6,6 +6,7 @@ import QueuePanel from './components/QueuePanel';
 import ChannelConfig from './components/ChannelConfig';
 import FocusPlayer from './components/FocusPlayer';
 import SeedsPage from './components/SeedsPage';
+import LikedVideosPage from './components/LikedVideosPage';
 import { SignalLogo, SearchIcon, QueueIcon, ThemeIcon } from './components/SignalLogo';
 
 export default function App() {
@@ -232,10 +233,43 @@ export default function App() {
           >
             ☰
           </button>
-          <div className="app-header-brand" onClick={clearSearch} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="app-header-brand" onClick={clearSearch} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
             <SignalLogo style={{ width: '22px', height: '22px' }} />
             <span>SignalFeed</span> <span style={{ fontSize: '0.62rem', opacity: 0.6, fontWeight: 'normal', backgroundColor: 'var(--bg-card)', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--border-subtle)' }}>v0.1</span>
           </div>
+
+          <nav style={{ display: 'flex', gap: '8px', marginLeft: '16px' }}>
+            <button 
+              onClick={() => setCurrentView("feed")} 
+              style={{
+                background: currentView === "feed" ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+                border: '1px solid ' + (currentView === "feed" ? 'var(--border-focus)' : 'transparent'),
+                color: currentView === "feed" ? 'var(--accent)' : 'var(--text-secondary)',
+                fontSize: '0.74rem',
+                padding: '4px 10px',
+                borderRadius: '12px',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              Feed
+            </button>
+            <button 
+              onClick={() => setCurrentView("liked")} 
+              style={{
+                background: currentView === "liked" ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+                border: '1px solid ' + (currentView === "liked" ? 'var(--border-focus)' : 'transparent'),
+                color: currentView === "liked" ? 'var(--accent)' : 'var(--text-secondary)',
+                fontSize: '0.74rem',
+                padding: '4px 10px',
+                borderRadius: '12px',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              Liked Videos
+            </button>
+          </nav>
         </div>
 
         {/* Centered search input form */}
@@ -326,6 +360,10 @@ export default function App() {
             <SeedsPage 
               onBack={() => setCurrentView("feed")}
               onRefreshFeed={handleRefreshAll}
+            />
+          ) : currentView === "liked" ? (
+            <LikedVideosPage 
+              onPlayVideo={handlePlayVideo}
             />
           ) : (
             <FeedList 

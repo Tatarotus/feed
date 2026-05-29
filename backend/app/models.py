@@ -149,3 +149,39 @@ class Event(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     video = relationship("Video", back_populates="events")
+
+
+class LikedVideo(Base):
+    __tablename__ = "liked_videos"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, default=1, nullable=False)
+    video_id = Column(String(255), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False)
+    channel_id = Column(String(255), ForeignKey("channels.id", ondelete="CASCADE"), nullable=False)
+    liked_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    semantic_score = Column(Float, default=0.0)
+    source_bucket = Column(String(255))
+    watch_duration_seconds = Column(Float, default=0.0)
+    embedding = Column(Vector(settings.EMBEDDING_DIM))
+    metadata_json = Column(JSONB, default={})
+
+    video = relationship("Video")
+    channel = relationship("Channel")
+
+    __table_args__ = (UniqueConstraint('user_id', 'video_id', name='_user_liked_video_uc'),)
+
+
+class UserInteraction(Base):
+    __tablename__ = "user_interactions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, default=1, nullable=False)
+    video_id = Column(String(255), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False)
+    interaction_type = Column(String(50), nullable=False)  # 'impression', 'click', 'like', 'dislike', 'subscribe', 'skip'
+    watch_duration_seconds = Column(Float, default=0.0)
+    rerank_score = Column(Float, default=0.0)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    event_metadata = Column(JSONB, default={})
+
+    video = relationship("Video")
+

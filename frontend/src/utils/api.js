@@ -97,6 +97,14 @@ export const api = {
   likeVideo: (videoId) => api.logEvent(videoId, "like", 0.0, 1),
   dislikeVideo: (videoId) => api.logEvent(videoId, "dislike", 0.0, -1),
 
+  getLikedVideos: (sortBy = "newest", search = "", limit = 50, offset = 0) => {
+    const params = new URLSearchParams({ sort_by: sortBy, limit: limit.toString(), offset: offset.toString() });
+    if (search) {
+      params.append("search", search);
+    }
+    return request(`/feed/liked?${params.toString()}`);
+  },
+
   // Search
   search: (query, limit = 25) => request(`/search?q=${encodeURIComponent(query)}&limit=${limit}`)
 };

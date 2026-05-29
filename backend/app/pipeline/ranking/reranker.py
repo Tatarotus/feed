@@ -12,6 +12,7 @@ class Stage2Reranker:
     def __init__(
         self,
         user_interests: List[Interest],
+        w_sub: float = 20.0,      # Subscription affinity weight
         w_trust: float = 25.0,
         w_pref: float = 15.0,
         w_semantic: float = 45.0,
@@ -22,6 +23,7 @@ class Stage2Reranker:
         serendipity: float = 0.2
     ):
         self.user_interests = user_interests
+        self.w_sub = w_sub
         self.w_trust = w_trust
         self.w_pref = w_pref
         self.w_semantic = w_semantic
@@ -90,8 +92,15 @@ class Stage2Reranker:
         quality_score = channel.quality_score if channel else 1.0
         s_trust = trust_val * quality_score
         
-        # 2. Preference Score (default 1.0)
+        # 2. Preference Score (default 1.0, dynamically capped between 0.25 and 1.50)
         s_pref = channel.preference_score if channel else 1.0
+        if s_pref is not None:
+            s_pref = max(0.25, min(1.50, s_pref))
+        else:
+            s_pref = 1.0
+            
+        # 2.5 Subscription Affinity Score (1.0 if channel is subscribed, 0.0 otherwise)
+        s_sub = 1.0 if (channel and getattr(channel, "is_subscribed", False)) else 0.0
         
         # 3. Semantic Similarity Score (Fallback to in-memory if None)
         if s_sem is None:
@@ -114,6 +123,7 @@ class Stage2Reranker:
         score = (
             (self.w_trust * s_trust) + 
             (self.w_pref * s_pref) + 
+            (self.w_sub * s_sub) + 
             (self.w_semantic * s_sem) - 
             (self.w_clickbait * s_click) -
             (25.0 * s_neg) +  # Negative vector demotion weight
@@ -138,6 +148,7 @@ class Stage2Reranker:
             "breakdown": {
                 "trusted_boost": round(self.w_trust * s_trust, 2),
                 "preference_boost": round(self.w_pref * s_pref, 2),
+                "subscription_boost": round(self.w_sub * s_sub, 2),
                 "semantic_affinity": round(self.w_semantic * s_sem, 2),
                 "clickbait_penalty": round(self.w_clickbait * s_click, 2),
                 "negative_demotion": round(25.0 * s_neg, 2),
@@ -240,6 +251,10 @@ class Stage2Reranker:
         
         target_d_ratio = self.serendipity
         
+        # Enforce diversity quotas: max 20% visible occupancy per channel
+        max_channel_occupancy = max(1, int(0.20 * limit))
+        final_channel_counts = {}
+
         while len(diversified_feed) < limit and (n_idx < len(network_pool) or d_idx < len(discovery_pool)):
             total_len = len(diversified_feed)
             
@@ -253,17 +268,29 @@ class Stage2Reranker:
                     want_discovery = current_ratio < target_d_ratio
             
             if want_discovery and d_idx < len(discovery_pool):
-                diversified_feed.append(discovery_pool[d_idx])
+                candidate = discovery_pool[d_idx]
+                c_id = candidate["video"].channel_id
                 d_idx += 1
-                d_count += 1
+                if final_channel_counts.get(c_id, 0) < max_channel_occupancy:
+                    diversified_feed.append(candidate)
+                    final_channel_counts[c_id] = final_channel_counts.get(c_id, 0) + 1
+                    d_count += 1
             elif n_idx < len(network_pool):
-                diversified_feed.append(network_pool[n_idx])
+                candidate = network_pool[n_idx]
+                c_id = candidate["video"].channel_id
                 n_idx += 1
+                if final_channel_counts.get(c_id, 0) < max_channel_occupancy:
+                    diversified_feed.append(candidate)
+                    final_channel_counts[c_id] = final_channel_counts.get(c_id, 0) + 1
             elif d_idx < len(discovery_pool):
                 # Fallback if we want network content but pool is exhausted
-                diversified_feed.append(discovery_pool[d_idx])
+                candidate = discovery_pool[d_idx]
+                c_id = candidate["video"].channel_id
                 d_idx += 1
-                d_count += 1
+                if final_channel_counts.get(c_id, 0) < max_channel_occupancy:
+                    diversified_feed.append(candidate)
+                    final_channel_counts[c_id] = final_channel_counts.get(c_id, 0) + 1
+                    d_count += 1
             else:
                 break
 

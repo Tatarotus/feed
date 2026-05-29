@@ -9,13 +9,21 @@ const LikeIcon = ({ filled }) => (
 
 const DislikeIcon = ({ filled }) => (
   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="action-svg">
-    <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm8-13h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3"></path>
+    <line x1="18" y1="6" x2="6" y2="18"></line>
+    <line x1="6" y1="6" x2="18" y2="18"></line>
+  </svg>
+);
+
+const SubscribeIcon = ({ filled }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="action-svg">
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
   </svg>
 );
 
 export default function FocusPlayer({ video, onClose }) {
   const [liked, setLiked] = useState(false);
   const [disliked, setDisliked] = useState(false);
+  const [subscribed, setSubscribed] = useState(false);
 
   const isVisible = !!video;
   const displayVideo = video || { id: '', title: '', channel: null };
@@ -24,6 +32,7 @@ export default function FocusPlayer({ video, onClose }) {
   useEffect(() => {
     setLiked(false);
     setDisliked(false);
+    setSubscribed(video?.channel?.is_subscribed || false);
   }, [video?.id]);
 
   useEffect(() => {
@@ -71,6 +80,19 @@ export default function FocusPlayer({ video, onClose }) {
       setLiked(false);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleSubscribe = async () => {
+    if (!video) return;
+    try {
+      await api.logEvent(video.id, "subscribe");
+      setSubscribed(true);
+      if (video && video.channel) {
+        video.channel.is_subscribed = true;
+      }
+    } catch (err) {
+      console.error("Subscription failed:", err);
     }
   };
 
@@ -137,16 +159,6 @@ export default function FocusPlayer({ video, onClose }) {
           <div className="player-feedback-wrapper">
             <div className="player-feedback-pill">
               <button 
-                onClick={handleLike} 
-                className={`player-feedback-btn like-btn ${liked ? 'active' : ''}`}
-                disabled={liked}
-                title="Like this video"
-              >
-                <LikeIcon filled={liked} />
-                <span>{liked ? "Liked" : "Like"}</span>
-              </button>
-              <span className="player-feedback-divider"></span>
-              <button 
                 onClick={handleDislike} 
                 className={`player-feedback-btn dislike-btn ${disliked ? 'active' : ''}`}
                 disabled={disliked}
@@ -154,6 +166,34 @@ export default function FocusPlayer({ video, onClose }) {
               >
                 <DislikeIcon filled={disliked} />
                 <span>{disliked ? "Disliked" : "Dislike"}</span>
+              </button>
+              
+              <span className="player-feedback-divider"></span>
+              
+              <button 
+                onClick={handleSubscribe} 
+                className={`player-feedback-btn subscribe-btn ${subscribed ? 'active' : ''}`}
+                disabled={subscribed}
+                title="Subscribe to channel"
+                style={{
+                  color: subscribed ? '#eab308' : 'var(--text-secondary)',
+                  transition: 'all 0.3s ease'
+                }}
+              >
+                <SubscribeIcon filled={subscribed} />
+                <span>{subscribed ? "Subscribed" : "Subscribe"}</span>
+              </button>
+              
+              <span className="player-feedback-divider"></span>
+              
+              <button 
+                onClick={handleLike} 
+                className={`player-feedback-btn like-btn ${liked ? 'active' : ''}`}
+                disabled={liked}
+                title="Like this video"
+              >
+                <LikeIcon filled={liked} />
+                <span>{liked ? "Liked" : "Like"}</span>
               </button>
             </div>
           </div>

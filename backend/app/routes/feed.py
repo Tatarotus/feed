@@ -4,8 +4,8 @@ from sqlalchemy import select, and_
 from typing import List
 
 from app.database import get_db
-from app.models import Interest, Channel, Video, Event
-from app.schemas import FeedItemResponse
+from app.models import Interest, Channel, Video, Event, LikedVideo
+from app.schemas import FeedItemResponse, LikedVideoResponse
 from app.pipeline.ranking.candidate import CandidateRetriever
 from app.pipeline.ranking.reranker import Stage2Reranker
 
@@ -127,3 +127,45 @@ def get_recommendation_feed(limit: int = 30, serendipity: float = 0.2, db: Sessi
     )
 
     return feed
+
+@router.get("/liked", response_model=List[LikedVideoResponse])
+def get_liked_videos(
+    sort_by: str = "newest",  # "newest", "oldest", "most_watched", "semantic_similarity"
+    search: str = None,
+    limit: int = 50,
+    offset: int = 0,
+    db: Session = Depends(get_db)
+):
+    """
+    Fetch user's permanently liked videos library with robust sorting,
+    instant search filtering, and pagination support.
+    """
+    stmt = select(LikedVideo).options(
+        joinedload(LikedVideo.video).joinedload(Video.channel),
+        joinedload(LikedVideo.channel)
+    ).where(LikedVideo.user_id == 1)
+
+    # Search filter (joins Video)
+    if search:
+        search_pattern = f"%{search}%"
+        stmt = stmt.join(Video).where(
+            Video.title.ilike(search_pattern) | Video.description.ilike(search_pattern)
+        )
+
+    # Sorting
+    if sort_by == "newest":
+        stmt = stmt.order_by(LikedVideo.liked_at.desc())
+    elif sort_by == "oldest":
+        stmt = stmt.order_by(LikedVideo.liked_at.asc())
+    elif sort_by == "most_watched":
+        stmt = stmt.order_by(LikedVideo.watch_duration_seconds.desc())
+    elif sort_by == "semantic_similarity":
+        stmt = stmt.order_by(LikedVideo.semantic_score.desc())
+    else:
+        stmt = stmt.order_by(LikedVideo.liked_at.desc())
+
+    # Pagination
+    stmt = stmt.limit(limit).offset(offset)
+    
+    results = db.scalars(stmt).all()
+    return results

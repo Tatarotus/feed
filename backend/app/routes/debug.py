@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, and_
 from typing import Dict, Any
 
 from app.database import get_db
-from app.models import Video, Channel, Interest, Event
+from app.models import Video, Channel, Interest, Event, UserInteraction, LikedVideo
 from app.pipeline.ranking.reranker import Stage2Reranker
 from app.jobs.coordinator import run_pipeline_sweep
 
@@ -61,9 +61,11 @@ logger = logging.getLogger("routes.debug")
 @router.post("/events", status_code=status.HTTP_201_CREATED)
 def log_telemetry_event(
     video_id: str,
-    event_type: str,  # 'watch', 'like', 'dislike', 'skip', 'queue_add', 'dismiss'
+    event_type: str,  # 'watch', 'like', 'dislike', 'skip', 'queue_add', 'dismiss', 'subscribe', 'click', 'impression'
     watch_time_pct: float = 0.0,
     rating: int = None,
+    watch_duration_seconds: float = 0.0,
+    rerank_score: float = 0.0,
     db: Session = Depends(get_db)
 ):
     """Log an interaction event for telemetry, vector tuning, and historical replays."""
@@ -82,17 +84,91 @@ def log_telemetry_event(
     )
     db.add(event)
 
-    # Dynamic preference tuning based on explicit feedback
+    # 1. Update user_interactions table
+    interaction = UserInteraction(
+        user_id=1,
+        video_id=video_id,
+        interaction_type=event_type,
+        watch_duration_seconds=watch_duration_seconds,
+        rerank_score=rerank_score,
+        event_metadata={"watch_time_pct": watch_time_pct, "rating": rating}
+    )
+    db.add(interaction)
+
+    # 2. Update liked_videos table if event_type == "like"
+    if event_type == "like" or rating == 1:
+        # Calculate semantic score
+        interests = db.scalars(select(Interest).where(Interest.user_id == 1)).all()
+        semantic_score = 0.0
+        best_topic = "None"
+        if video_exists.embedding is not None and interests:
+            for interest in interests:
+                if interest.embedding is not None:
+                    sim = sum(a * b for a, b in zip(video_exists.embedding, interest.embedding))
+                    if sim > semantic_score:
+                        semantic_score = max(float(sim), 0.0)
+                        best_topic = interest.topic
+
+        # Persist liked video permanently
+        existing_like = db.scalar(
+            select(LikedVideo).where(
+                and_(
+                    LikedVideo.user_id == 1,
+                    LikedVideo.video_id == video_id
+                )
+            )
+        )
+        if not existing_like:
+            liked_video = LikedVideo(
+                user_id=1,
+                video_id=video_id,
+                channel_id=video_exists.channel_id,
+                semantic_score=semantic_score,
+                source_bucket=best_topic,
+                watch_duration_seconds=watch_duration_seconds,
+                embedding=video_exists.embedding,
+                metadata_json={
+                    "title": video_exists.title,
+                    "description": video_exists.description,
+                    "best_topic": best_topic
+                }
+            )
+            db.add(liked_video)
+
+    # 3. Dynamic preference tuning based on explicit feedback mapped to standard caps
     channel = video_exists.channel
     if channel:
+        old_pref = channel.preference_score if channel.preference_score is not None else 1.0
+        
         if event_type == "like" or rating == 1:
-            # Boost channel preference score
-            channel.preference_score = min(float(channel.preference_score or 1.0) + 0.15, 2.0)
+            # Boost channel preference score moderately (+0.06)
+            channel.preference_score = max(0.25, min(1.50, old_pref + 0.06))
             logger.info(f"Boosted channel {channel.title} preference_score to {channel.preference_score}")
-        elif event_type == "dislike" or rating == -1:
-            # Demote channel preference score
-            channel.preference_score = max(float(channel.preference_score or 1.0) - 0.25, 0.2)
+        elif event_type in ["dislike", "disliked"] or rating == -1:
+            # Demote channel preference score (-0.10)
+            channel.preference_score = max(0.25, min(1.50, old_pref - 0.10))
             logger.info(f"Demoted channel {channel.title} preference_score to {channel.preference_score}")
+        elif event_type == "subscribe":
+            # Set internal subscription relationship & boost preference score (+0.15)
+            channel.is_subscribed = True
+            channel.preference_score = max(0.25, min(1.50, old_pref + 0.15))
+            logger.info(f"Subscribed to channel {channel.title} and boosted preference_score to {channel.preference_score}")
+            
+            # Increase semantic topic affinity
+            interests = db.scalars(select(Interest).where(Interest.user_id == 1)).all()
+            if video_exists.embedding is not None and interests:
+                best_interest = None
+                max_sim = 0.0
+                for interest in interests:
+                    if interest.embedding is not None:
+                        sim = sum(a * b for a, b in zip(video_exists.embedding, interest.embedding))
+                        if sim > max_sim:
+                            max_sim = sim
+                            best_interest = interest
+                
+                if best_interest and max_sim >= 0.35:
+                    best_interest.weight = max(0.1, min(5.0, best_interest.weight + 0.15))
+                    logger.info(f"Boosted interest topic '{best_interest.topic}' weight to {best_interest.weight} due to channel subscription")
             
     db.commit()
     
