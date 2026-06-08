@@ -25,7 +25,7 @@ services:
     volumes:
       - ./backend:/app
     ports:
-      - "8000:8000"
+      - "8081:8000"
     environment:
       DATABASE_URL: postgresql://feed_user:feed_password@db:5432/feed_db
       EMBEDDING_DIM: 2048
@@ -60,12 +60,12 @@ services:
       dockerfile: Dockerfile
     container_name: frontend
     ports:
-      - "5173:5173"
+      - "5174:5173"
     volumes:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      VITE_API_URL: http://localhost:8000/api
+      VITE_API_URL: https://feed.smre.run.place/api
     depends_on:
       - backend
     command: npm run dev -- --host
