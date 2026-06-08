@@ -1,5 +1,5 @@
 import re
-from typing import Tuple, List
+from typing import List, Tuple
 
 # Core technology acronyms that are allowed to be uppercase without triggering flags
 ALLOWED_ACRONYMS = {
@@ -32,32 +32,32 @@ PUNCTUATION_ABUSE_PATTERN = re.compile(r"!{2,}|(?:\?!|\!?){1,}")
 
 def evaluate_all_caps(title: str) -> bool:
     """
-    Check if the title has a high ratio of ALL CAPS letters, 
+    Check if the title has a high ratio of ALL CAPS letters,
     excluding spaces, numbers, punctuation, and allowed tech acronyms.
     """
     if not title:
         return False
-        
+
     # Strip known tech acronyms to prevent false positives
     words = title.split()
     filtered_words = [w for w in words if w.upper() not in ALLOWED_ACRONYMS]
     clean_title = " ".join(filtered_words)
-    
+
     # Filter to alphabetic characters only
     alpha_chars = [c for c in clean_title if c.isalpha()]
     if not alpha_chars:
         return False
-        
+
     uppercase_chars = [c for c in alpha_chars if c.isupper()]
     ratio = len(uppercase_chars) / len(alpha_chars)
-    
+
     # Trigger if more than 30% of the remaining letters are uppercase
     return ratio > 0.30
 
 def analyze_clickbait(title: str) -> Tuple[float, List[str]]:
     """
     Analyzes a video title against clickbait heuristic criteria.
-    
+
     Returns:
         Tuple of (clickbait_score float from 0.0 to 1.0, reasons list of strings)
     """
@@ -100,5 +100,5 @@ def analyze_clickbait(title: str) -> Tuple[float, List[str]]:
 
     # Cap score at 1.0
     final_score = min(score, 1.0)
-    
+
     return final_score, reasons

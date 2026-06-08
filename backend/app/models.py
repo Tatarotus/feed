@@ -1,9 +1,23 @@
-from sqlalchemy import Column, Integer, String, Text, Boolean, Float, DateTime, ForeignKey, ARRAY, UniqueConstraint, func
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import (
+    ARRAY,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
-from pgvector.sqlalchemy import Vector
-from app.database import Base
+
 from app.config import settings
+from app.database import Base
+
 
 class Channel(Base):
     __tablename__ = "channels"
@@ -15,19 +29,19 @@ class Channel(Base):
     rss_url = Column(String(512))
     provider = Column(String(50), default="rss")  # 'rss', 'invidious', 'piped'
     thumbnail_url = Column(String(512))
-    
+
     # Core Classification Weights
     is_trusted = Column(Boolean, default=True)
     quality_score = Column(Float, default=1.0)
     preference_score = Column(Float, default=1.0)
     is_subscribed = Column(Boolean, default=True, nullable=False)
-    
+
     # Sync Configuration
     polling_interval_minutes = Column(Integer, default=360)
     last_fetched_at = Column(DateTime(timezone=True))
     etag = Column(String(255))
     last_modified = Column(String(255))
-    
+
     category = Column(String(100))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -45,24 +59,24 @@ class Video(Base):
     thumbnail_url = Column(String(512))
     publish_date = Column(DateTime(timezone=True), nullable=False)
     url = Column(String(512), nullable=False)
-    
+
     # Processing state-machine
     processing_status = Column(String(50), default="pending")  # 'pending', 'ingested', 'chunked', 'embedded', 'summarized', 'failed'
     processing_error = Column(Text)
     retry_count = Column(Integer, default=0)
-    
+
     # Heuristic ratings
     clickbait_score = Column(Float, default=0.0)
     clickbait_reasons = Column(ARRAY(Text), default=[])
-    
+
     # Extendable payload caching
     raw_metadata = Column(JSONB, default={})
-    
+
     # Dynamic vector mappings (Bound tosettings.EMBEDDING_DIM config)
     embedding_model = Column(String(100))
     embedding_version = Column(String(50))
     embedding = Column(Vector(settings.EMBEDDING_DIM))
-    
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     channel = relationship("Channel", back_populates="videos")
@@ -81,12 +95,12 @@ class VideoChunk(Base):
     normalized_text = Column(Text)
     language_code = Column(String(10), default="en")
     transcript_source = Column(String(50))  # 'youtube_api', 'subtitles_fallback'
-    
+
     # Model tracking & vector binding
     embedding_model = Column(String(100))
     embedding_version = Column(String(50))
     embedding = Column(Vector(settings.EMBEDDING_DIM))
-    
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     video = relationship("Video", back_populates="chunks")
@@ -99,11 +113,11 @@ class Interest(Base):
     user_id = Column(Integer, default=1)
     topic = Column(String(255), nullable=False)
     weight = Column(Float, default=1.0)
-    
+
     embedding_model = Column(String(100))
     embedding_version = Column(String(50))
     embedding = Column(Vector(settings.EMBEDDING_DIM))
-    
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (UniqueConstraint('user_id', 'topic', name='_user_topic_uc'),)
@@ -184,4 +198,46 @@ class UserInteraction(Base):
     event_metadata = Column(JSONB, default={})
 
     video = relationship("Video")
+
+
+class SemanticMutation(Base):
+    __tablename__ = "semantic_mutations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    parent_topic = Column(String(255), nullable=False)
+    mutation_topic = Column(String(255), nullable=False, unique=True)
+    parent_embedding = Column(Vector(settings.EMBEDDING_DIM))
+    mutation_embedding = Column(Vector(settings.EMBEDDING_DIM))
+    similarity_score = Column(Float, default=0.0)
+    confidence_score = Column(Float, default=0.10)
+    telemetry_score = Column(Float, default=0.0)
+    survival_score = Column(Float, default=1.0)
+    generation_depth = Column(Integer, default=1)
+    status = Column(String(50), default="experimental")  # 'experimental', 'promoted', 'dead'
+
+    # Semantic Energy Economy fields
+    energy = Column(Float, default=1.0)
+    attention_share = Column(Float, default=0.0)
+    competition_score = Column(Float, default=0.0)
+    fatigue_multiplier = Column(Float, default=1.0)
+    last_energy_update = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class FeedImpression(Base):
+    __tablename__ = "feed_impressions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, default=1, nullable=False)
+    video_id = Column(String(255), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False)
+    shown_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    clicked = Column(Boolean, default=False, nullable=False)
+    watch_duration = Column(Float, default=0.0, nullable=False)
+    refresh_cycle_id = Column(String(255), nullable=True)
+
+    video = relationship("Video")
+
+
 

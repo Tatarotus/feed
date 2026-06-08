@@ -1,11 +1,12 @@
 import logging
-from typing import List, Dict, Any, Tuple
-import httpx
-import feedparser
 from datetime import datetime
+from typing import List, Tuple
+
+import feedparser
+import httpx
 from dateutil import parser as date_parser
 
-from app.pipeline.ingestion.base import VideoSource, VideoMetadata
+from app.pipeline.ingestion.base import VideoMetadata, VideoSource
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ class RSSProvider(VideoSource):
         try:
             async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
                 response = await client.get(rss_url, headers=headers)
-                
+
                 # Check for 304 Not Modified
                 if response.status_code == 304:
                     logger.info(f"Channel {channel_id} feed unchanged (304 Not Modified).")
@@ -45,15 +46,15 @@ class RSSProvider(VideoSource):
 
                 # Raise for standard errors
                 response.raise_for_status()
-                
+
                 # Extract new cache headers
                 new_etag = response.headers.get("ETag")
                 new_last_modified = response.headers.get("Last-Modified")
-                
+
                 # Parse XML content using feedparser
                 raw_xml = response.text
                 feed_data = feedparser.parse(raw_xml)
-                
+
                 if feed_data.bozo:
                     # Non-fatal parsing issues are logged but still processed if entries exist
                     logger.warning(f"Feed parser bozo exception detected for channel {channel_id}: {feed_data.bozo_exception}")
@@ -71,10 +72,10 @@ class RSSProvider(VideoSource):
                             continue
 
                     title = entry.get("title", "Untitled Video")
-                    
+
                     # Capture description from media:description (standard feedparser mapping) or fallback summary
                     description = entry.get("media_description", entry.get("summary", ""))
-                    
+
                     # Date parsing
                     pub_date_str = entry.get("published", "")
                     try:

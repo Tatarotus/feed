@@ -1,15 +1,25 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from sqlalchemy import select, and_
 from typing import List
 
-from app.database import get_db
-from app.models import Interest
-from app.schemas import InterestCreate, InterestUpdate, InterestResponse, SeedCreate
-from app.pipeline.enrichment.embedder import embedder
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import and_, select
+from sqlalchemy.orm import Session
+
 from app.config import settings
+from app.database import get_db
+from app.models import Interest, SemanticMutation
+from app.pipeline.enrichment.embedder import embedder
+from app.schemas import InterestCreate, InterestResponse, InterestUpdate, SeedCreate, SemanticMutationResponse
 
 router = APIRouter(prefix="/interests", tags=["Interests"])
+
+@router.get("/mutations", response_model=List[SemanticMutationResponse])
+def list_semantic_mutations(db: Session = Depends(get_db)):
+    """Fetch all active semantic mutations (experimental + promoted)."""
+    return db.scalars(
+        select(SemanticMutation)
+        .where(SemanticMutation.status.in_(["experimental", "promoted"]))
+        .order_by(SemanticMutation.mutation_topic.asc())
+    ).all()
 
 @router.get("", response_model=List[InterestResponse])
 def list_interests(db: Session = Depends(get_db)):
@@ -23,7 +33,7 @@ async def follow_topic(interest_in: InterestCreate, db: Session = Depends(get_db
     Asynchronously queries API embeddings with SQL caching enabled.
     """
     topic_clean = interest_in.topic.strip().lower()
-    
+
     existing = db.scalar(
         select(Interest).where(
             and_(
@@ -41,7 +51,7 @@ async def follow_topic(interest_in: InterestCreate, db: Session = Depends(get_db
     try:
         # Await the async generator, passing the active db session for cache lookups
         topic_vector = await embedder.generate_embedding(topic_clean, db=db, input_type="query")
-        
+
         interest = Interest(
             user_id=1,
             topic=topic_clean,
@@ -50,12 +60,12 @@ async def follow_topic(interest_in: InterestCreate, db: Session = Depends(get_db
             embedding_version=settings.EMBEDDING_VERSION,
             embedding=topic_vector
         )
-        
+
         db.add(interest)
         db.commit()
         db.refresh(interest)
         return interest
-        
+
     except Exception as e:
         db.rollback()
         raise HTTPException(
@@ -69,7 +79,7 @@ def unfollow_topic(interest_id: int, db: Session = Depends(get_db)):
     interest = db.scalar(select(Interest).where(Interest.id == interest_id))
     if not interest:
         raise HTTPException(status_code=404, detail="Topic not found.")
-        
+
     db.delete(interest)
     db.commit()
     return
@@ -80,17 +90,18 @@ def update_interest_weight(interest_id: int, body: InterestUpdate, db: Session =
     interest = db.scalar(select(Interest).where(Interest.id == interest_id))
     if not interest:
         raise HTTPException(status_code=404, detail="Interest not found.")
-    
+
     if body.weight is not None:
         interest.weight = max(body.weight, 0.1)  # floor at 0.1 to avoid zeroing out
-    
+
     db.commit()
     db.refresh(interest)
     return interest
 
-import re
-import httpx
 import logging
+import re
+
+import httpx
 
 logger = logging.getLogger("routes.interests")
 
@@ -121,12 +132,12 @@ async def fetch_video_metadata(video_id: str) -> tuple[str, str]:
         "https://invidious.nerdvpn.de",
         "https://yewtu.be"
     ]
-    
+
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Accept": "application/json"
     }
-    
+
     for instance_url in invidious_instances:
         api_url = f"{instance_url.rstrip('/')}/api/v1/videos/{video_id}"
         try:
@@ -141,7 +152,7 @@ async def fetch_video_metadata(video_id: str) -> tuple[str, str]:
                         return title, description
         except Exception as e:
             logger.warning(f"Failed to fetch metadata from {instance_url}: {e}")
-            
+
     # Fallback to standard YouTube oEmbed (highly reliable, returns title)
     oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
     try:
@@ -155,7 +166,7 @@ async def fetch_video_metadata(video_id: str) -> tuple[str, str]:
                     return title, "No description available (oEmbed fallback)"
     except Exception as e:
         logger.error(f"oEmbed fallback failed: {e}")
-        
+
     return None, None
 
 @router.post("/seed", response_model=InterestResponse, status_code=status.HTTP_201_CREATED)
@@ -172,7 +183,7 @@ async def add_manual_seed(seed_in: SeedCreate, db: Session = Depends(get_db)):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid YouTube video URL."
         )
-        
+
     title, description = await fetch_video_metadata(video_id)
     if not title:
         raise HTTPException(

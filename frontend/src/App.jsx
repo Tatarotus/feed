@@ -16,6 +16,7 @@ export default function App() {
   // Dynamic collections
   const [feed, setFeed] = useState([]);
   const [queue, setQueue] = useState([]);
+  const [shortsFeed, setShortsFeed] = useState([]);
   
   // Toggles and layout states
   const [calmMode, setCalmMode] = useState(false); // Default to showing visuals
@@ -59,6 +60,7 @@ export default function App() {
   
   const [feedLoading, setFeedLoading] = useState(false);
   const [queueLoading, setQueueLoading] = useState(false);
+  const [shortsLoading, setShortsLoading] = useState(false);
 
   // Check if system has completed onboarding (channels and interests exist)
   const checkOnboardStatus = async () => {
@@ -81,18 +83,24 @@ export default function App() {
   const loadFeed = async (serenVal = serendipity) => {
     const requestId = ++latestFeedRequestId.current;
     setFeedLoading(true);
+    setShortsLoading(true);
     try {
-      const data = await api.getFeed(500, serenVal);
+      const [feedData, shortsData] = await Promise.all([
+        api.getFeed(500, serenVal),
+        api.getShortsFeed(500, serenVal)
+      ]);
       if (requestId === latestFeedRequestId.current) {
-        setFeed(data);
+        setFeed(feedData);
+        setShortsFeed(shortsData);
       }
     } catch (err) {
       if (requestId === latestFeedRequestId.current) {
-        console.error("Failed to load feed:", err);
+        console.error("Failed to load feeds:", err);
       }
     } finally {
       if (requestId === latestFeedRequestId.current) {
         setFeedLoading(false);
+        setShortsLoading(false);
       }
     }
   };
@@ -171,6 +179,14 @@ export default function App() {
 
   useEffect(() => {
     checkOnboardStatus();
+
+    const handleSubChange = () => {
+      loadFeed();
+    };
+    window.addEventListener('channel-subscription-changed', handleSubChange);
+    return () => {
+      window.removeEventListener('channel-subscription-changed', handleSubChange);
+    };
   }, []);
 
   useEffect(() => {
@@ -253,6 +269,21 @@ export default function App() {
               }}
             >
               Feed
+            </button>
+            <button 
+              onClick={() => setCurrentView("shorts")} 
+              style={{
+                background: currentView === "shorts" ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+                border: '1px solid ' + (currentView === "shorts" ? 'var(--border-focus)' : 'transparent'),
+                color: currentView === "shorts" ? 'var(--accent)' : 'var(--text-secondary)',
+                fontSize: '0.74rem',
+                padding: '4px 10px',
+                borderRadius: '12px',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              Shorts
             </button>
             <button 
               onClick={() => setCurrentView("liked")} 
@@ -364,6 +395,23 @@ export default function App() {
           ) : currentView === "liked" ? (
             <LikedVideosPage 
               onPlayVideo={handlePlayVideo}
+            />
+          ) : currentView === "shorts" ? (
+            <FeedList 
+              feed={shortsFeed}
+              loading={shortsLoading}
+              onRefresh={handleRefreshAll}
+              onPlayVideo={handlePlayVideo}
+              onQueueUpdate={loadQueue}
+              calmMode={calmMode}
+              learningMode={learningMode}
+              setCalmMode={setCalmMode}
+              setLearningMode={setLearningMode}
+              serendipity={serendipity}
+              onSerendipityChange={(val) => {
+                setSerendipity(val);
+                loadFeed(val);
+              }}
             />
           ) : (
             <FeedList 

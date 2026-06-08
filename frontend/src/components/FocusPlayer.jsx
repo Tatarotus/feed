@@ -84,15 +84,31 @@ export default function FocusPlayer({ video, onClose }) {
   };
 
   const handleSubscribe = async () => {
-    if (!video) return;
+    if (!video || !video.channel) return;
+    const targetState = !subscribed;
+    
+    // Optimistically update frontend state for instant responsiveness
+    setSubscribed(targetState);
+    if (video.channel) {
+      video.channel.is_subscribed = targetState;
+    }
+    
     try {
-      await api.logEvent(video.id, "subscribe");
-      setSubscribed(true);
-      if (video && video.channel) {
-        video.channel.is_subscribed = true;
-      }
+      await api.updateChannel(video.channel.id, { is_subscribed: targetState });
+      
+      // Dispatch browser custom event for instant cross-component synchronization
+      window.dispatchEvent(new CustomEvent('channel-subscription-changed', { 
+        detail: { channelId: video.channel.id, isSubscribed: targetState } 
+      }));
+      
+      api.logEvent(video.id, targetState ? "subscribe" : "unsubscribe");
     } catch (err) {
-      console.error("Subscription failed:", err);
+      console.error("Subscription toggle failed:", err);
+      // Rollback state on failure
+      setSubscribed(!targetState);
+      if (video.channel) {
+        video.channel.is_subscribed = !targetState;
+      }
     }
   };
 
@@ -159,13 +175,13 @@ export default function FocusPlayer({ video, onClose }) {
           <div className="player-feedback-wrapper">
             <div className="player-feedback-pill">
               <button 
-                onClick={handleDislike} 
-                className={`player-feedback-btn dislike-btn ${disliked ? 'active' : ''}`}
-                disabled={disliked}
-                title="Dislike this video"
+                onClick={handleLike} 
+                className={`player-feedback-btn like-btn ${liked ? 'active' : ''}`}
+                disabled={liked}
+                title="Like this video"
               >
-                <DislikeIcon filled={disliked} />
-                <span>{disliked ? "Disliked" : "Dislike"}</span>
+                <LikeIcon filled={liked} />
+                <span>{liked ? "Liked" : "Like"}</span>
               </button>
               
               <span className="player-feedback-divider"></span>
@@ -173,8 +189,7 @@ export default function FocusPlayer({ video, onClose }) {
               <button 
                 onClick={handleSubscribe} 
                 className={`player-feedback-btn subscribe-btn ${subscribed ? 'active' : ''}`}
-                disabled={subscribed}
-                title="Subscribe to channel"
+                title={subscribed ? "Unsubscribe from channel" : "Subscribe to channel"}
                 style={{
                   color: subscribed ? '#eab308' : 'var(--text-secondary)',
                   transition: 'all 0.3s ease'
@@ -187,13 +202,13 @@ export default function FocusPlayer({ video, onClose }) {
               <span className="player-feedback-divider"></span>
               
               <button 
-                onClick={handleLike} 
-                className={`player-feedback-btn like-btn ${liked ? 'active' : ''}`}
-                disabled={liked}
-                title="Like this video"
+                onClick={handleDislike} 
+                className={`player-feedback-btn dislike-btn ${disliked ? 'active' : ''}`}
+                disabled={disliked}
+                title="Dislike this video"
               >
-                <LikeIcon filled={liked} />
-                <span>{liked ? "Liked" : "Like"}</span>
+                <DislikeIcon filled={disliked} />
+                <span>{disliked ? "Disliked" : "Dislike"}</span>
               </button>
             </div>
           </div>

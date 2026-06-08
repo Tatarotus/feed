@@ -1,12 +1,13 @@
+from typing import Dict, List
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import select, or_, and_
-from typing import List, Dict
 
 from app.database import get_db
 from app.models import Video, VideoChunk
-from app.schemas import VideoResponse
 from app.pipeline.enrichment.embedder import embedder
+from app.schemas import VideoResponse
 
 router = APIRouter(prefix="/search", tags=["Search"])
 
@@ -24,11 +25,11 @@ async def search_videos(q: str, limit: int = 25, db: Session = Depends(get_db)):
         )
 
     clean_query = q.strip()
-    
+
     try:
         # 1. Await query embedding, passing db for caching checks
         query_vector = await embedder.generate_embedding(clean_query, db=db, input_type="query")
-        
+
         # 2. Semantic Search on Parent Videos
         stmt_video = (
             select(Video)

@@ -1,8 +1,9 @@
 import logging
-from typing import Protocol, List, Optional
+from typing import List, Optional, Protocol
+
 import httpx
-from fastapi import HTTPException
 from app.config import settings
+from fastapi import HTTPException
 
 logger = logging.getLogger("services.embedding_provider")
 
@@ -31,7 +32,7 @@ class NvidiaEmbeddingProvider(EmbeddingProvider):
             "Content-Type": "application/json",
             "Accept": "application/json"
         }
-        
+
         payload = {
             "input": texts,
             "model": self.model,
@@ -43,7 +44,7 @@ class NvidiaEmbeddingProvider(EmbeddingProvider):
             logger.info(f"Requesting NVIDIA embeddings for batch size {len(texts)} using model {self.model} with input_type '{input_type}'...")
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(self.endpoint, json=payload, headers=headers)
-                
+
                 if response.status_code != 200:
                     error_text = response.text
                     logger.error(f"NVIDIA API Error ({response.status_code}): {error_text}")
@@ -51,18 +52,18 @@ class NvidiaEmbeddingProvider(EmbeddingProvider):
                         status_code=response.status_code,
                         detail=f"NVIDIA Embedding API error: {error_text}"
                     )
-                
+
                 result = response.json()
                 data = result.get("data", [])
-                
+
                 # Sort by index to preserve order
                 data.sort(key=lambda x: x.get("index", 0))
-                
+
                 embeddings = [item["embedding"] for item in data]
-                
+
                 if len(embeddings) != len(texts):
                     raise ValueError(f"Mismatch: Sent {len(texts)} items, but received {len(embeddings)} vectors.")
-                
+
                 return embeddings
 
         except Exception as e:
@@ -88,7 +89,7 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
-        
+
         payload = {
             "input": texts,
             "model": self.model
@@ -99,11 +100,11 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(self.endpoint, json=payload, headers=headers)
                 response.raise_for_status()
-                
+
                 result = response.json()
                 data = result.get("data", [])
                 data.sort(key=lambda x: x.get("index", 0))
-                
+
                 return [item["embedding"] for item in data]
 
         except Exception as e:

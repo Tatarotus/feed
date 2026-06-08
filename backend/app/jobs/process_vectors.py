@@ -1,13 +1,13 @@
-import logging
 import asyncio
-from sqlalchemy.orm import Session
-from sqlalchemy import select, and_
+import logging
 
+from sqlalchemy import and_, select
+
+from app.config import settings
 from app.database import SessionLocal
 from app.models import Video, VideoChunk
-from app.pipeline.enrichment.embedder import embedder
 from app.pipeline.enrichment.classifier import analyze_clickbait
-from app.config import settings
+from app.pipeline.enrichment.embedder import embedder
 
 logger = logging.getLogger("jobs.process_vectors")
 
@@ -33,7 +33,7 @@ async def vectorize_video(video_id: str) -> bool:
         db.close()
 
     logger.info(f"Generating API vectors and classifying video: {video_title} ({video_id})")
-    
+
     try:
         # 2. Vectorize chunks over network WITHOUT open DB transaction
         embeddings = []
@@ -72,7 +72,7 @@ async def vectorize_video(video_id: str) -> bool:
 
             video.clickbait_score = click_score
             video.clickbait_reasons = click_reasons
-            
+
             if click_score > 0.0:
                 logger.info(f"Clickbait detected on {video_id}: Score {click_score} (Reasons: {click_reasons})")
 
@@ -96,7 +96,7 @@ async def vectorize_video(video_id: str) -> bool:
             if video:
                 video.retry_count += 1
                 video.processing_error = f"API Vectorization error: {str(e)}"
-                
+
                 if video.retry_count >= settings.MAX_PROCESSING_RETRIES:
                     video.processing_status = "failed"
                     logger.error(f"Video {video_id} vectorization failed permanently: {str(e)}")
@@ -130,7 +130,7 @@ async def run_vector_processing():
         return
     finally:
         db.close()
-        
+
     if not chunked_video_ids:
         logger.debug("No chunked videos for vectorization.")
         return

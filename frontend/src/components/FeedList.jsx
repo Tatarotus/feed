@@ -512,9 +512,15 @@ export default function FeedList({
                 <span>-{explainData.score_breakdown.clickbait_penalty}</span>
               </div>
               <div style={{ display: 'flex', justifySelf: 'flex-start', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Gravity Freshness Decay:</span>
-                <span>+{explainData.score_breakdown.freshness_decay}</span>
+                <span style={{ color: 'var(--text-secondary)' }}>Freshness Decay Factor:</span>
+                <span>x{explainData.score_breakdown.freshness_decay}</span>
               </div>
+              {explainData.score_breakdown.repeat_penalty !== 0 && (
+                <div style={{ display: 'flex', justifySelf: 'flex-start', justifyContent: 'space-between', color: 'var(--danger)' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Repeat Impression Penalty:</span>
+                  <span>{explainData.score_breakdown.repeat_penalty} pts</span>
+                </div>
+              )}
             </div>
           </div>
 

@@ -1,12 +1,14 @@
-import logging
 import asyncio
+import logging
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from app.jobs.ingest import run_ingestion
+from app.jobs.cleanup import run_cleanup_and_tuning
 from app.jobs.discovery import run_discovery
+from app.jobs.evolution import run_semantic_evolution
+from app.jobs.ingest import run_ingestion
 from app.jobs.process_chunks import run_chunk_processing
 from app.jobs.process_vectors import run_vector_processing
-from app.jobs.cleanup import run_cleanup_and_tuning
 
 # Setup centralized logging layout
 logging.basicConfig(
@@ -27,16 +29,16 @@ async def run_pipeline_sweep():
     try:
         # Step 1: Ingest fresh videos from subscribed channels
         await run_ingestion()
-        
+
         # Step 1.5: Discover fresh out-of-network content based on interest topics
         await run_discovery()
-        
+
         # Step 2: Transcript crawl & chunking for all pending videos
         await run_chunk_processing()
-        
+
         # Step 3: Embed vectors & clickbait check (Directly await async method)
         await run_vector_processing()
-        
+
         logger.info("--- Pipeline Sweep Completed Safely ---")
     except Exception as e:
         logger.error(f"Error during coordinated pipeline sweep: {str(e)}")
@@ -53,43 +55,43 @@ async def run_maintenance_sweep():
 
 def main():
     scheduler = AsyncIOScheduler()
-    
+
     # 1. Ingestion of subscribed feeds: scheduled every 15 minutes
     scheduler.add_job(
-        run_ingestion, 
-        'interval', 
-        minutes=15, 
-        id='ingestion_job', 
+        run_ingestion,
+        'interval',
+        minutes=15,
+        id='ingestion_job',
         replace_existing=True
     )
-    
+
     # 2. Dynamic discovery: scheduled every 30 minutes (to avoid heavy API usage)
     scheduler.add_job(
-        run_discovery, 
-        'interval', 
-        minutes=30, 
-        id='discovery_job', 
+        run_discovery,
+        'interval',
+        minutes=30,
+        id='discovery_job',
         replace_existing=True
     )
-    
+
     # 3. Transcript crawl & chunking: scheduled every 2 minutes for continuous, rapid throughput
     scheduler.add_job(
-        run_chunk_processing, 
-        'interval', 
-        minutes=2, 
-        id='chunk_processing_job', 
+        run_chunk_processing,
+        'interval',
+        minutes=2,
+        id='chunk_processing_job',
         replace_existing=True
     )
-    
+
     # 4. Bulk vector generation & embedding: scheduled every 2 minutes for real-time indexing
     scheduler.add_job(
-        run_vector_processing, 
-        'interval', 
-        minutes=2, 
-        id='vector_processing_job', 
+        run_vector_processing,
+        'interval',
+        minutes=2,
+        id='vector_processing_job',
         replace_existing=True
     )
-    
+
     # 5. Maintenance / Telemetry auto-tuning: scheduled every 60 minutes
     scheduler.add_job(
         run_maintenance_sweep,
@@ -98,15 +100,25 @@ def main():
         id='database_maintenance_job',
         replace_existing=True
     )
-    
+
+    # 6. Semantic Evolution (LLM Mutation Discovery): scheduled every 30 minutes
+    scheduler.add_job(
+        run_semantic_evolution,
+        'interval',
+        minutes=30,
+        id='semantic_evolution_job',
+        replace_existing=True
+    )
+
     # Inject one-shot triggers to kickstart processing immediately on service boot
     scheduler.add_job(run_ingestion, id='boot_ingest_trigger')
     scheduler.add_job(run_chunk_processing, id='boot_chunk_trigger')
     scheduler.add_job(run_vector_processing, id='boot_vector_trigger')
-    
+    scheduler.add_job(run_semantic_evolution, id='boot_evolution_trigger')
+
     logger.info("SignalFeed Coordinated jobs worker scheduler successfully running with independent concurrent threads!")
     scheduler.start()
-    
+
     # Keep the async event loop thread process active
     try:
         asyncio.get_event_loop().run_forever()

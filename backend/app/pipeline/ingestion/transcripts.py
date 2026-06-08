@@ -1,7 +1,8 @@
 import logging
 from typing import Tuple
-from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
+
 import httpx
+from youtube_transcript_api import NoTranscriptFound, TranscriptsDisabled, YouTubeTranscriptApi
 
 logger = logging.getLogger("pipeline.ingestion.transcripts")
 
@@ -24,11 +25,11 @@ async def fetch_transcript_from_invidious(video_id: str, instance_url: str = "ht
                         # Invidious caption URLs can be relative
                         if caption_url.startswith("/"):
                             caption_url = f"{instance_url.rstrip('/')}{caption_url}"
-                        
+
                         logger.info(f"Fetching subtitle fallbacks from Invidious: {caption_url}")
                         cap_resp = await client.get(caption_url)
                         if cap_resp.status_code == 200:
-                            # Caption tracks are usually WebVTT or SRT formatted. 
+                            # Caption tracks are usually WebVTT or SRT formatted.
                             # We strip timestamp lines simply using regex/filters to get raw text.
                             raw_lines = cap_resp.text.splitlines()
                             clean_words = []
@@ -46,14 +47,14 @@ async def fetch_transcript_from_invidious(video_id: str, instance_url: str = "ht
 async def fetch_transcript(video_id: str) -> Tuple[str, str, str]:
     """
     Retrieves the transcript/subtitles for a given YouTube video.
-    
+
     Returns:
         Tuple of (transcript_text, language_code, transcript_source)
     """
     try:
         # 1. Fetch available transcripts list to locate perfect candidate
         transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-        
+
         # Try manual English, then generated English
         try:
             transcript = transcript_list.find_transcript(['en'])
@@ -67,7 +68,7 @@ async def fetch_transcript(video_id: str) -> Tuple[str, str, str]:
                 source = f"youtube_api_multilingual_{transcript.language_code}"
                 logger.info(f"Retrieved {transcript.language_code} transcript for video {video_id}")
             except Exception:
-                raise NoTranscriptFound(video_id, "No transcripts available", transcript_list)
+                raise NoTranscriptFound(video_id, "No transcripts available", transcript_list) from None
 
         # Pull raw lines
         transcript_data = transcript.fetch()
@@ -76,11 +77,11 @@ async def fetch_transcript(video_id: str) -> Tuple[str, str, str]:
 
     except Exception as e:
         logger.warning(f"YouTube transcript retrieval failed for {video_id}: {str(e)}")
-        
+
         # 2. Trigger Invidious Caption fallback
         logger.info(f"Attempting Invidious caption fallback for {video_id}...")
         fallback_text = await fetch_transcript_from_invidious(video_id)
         if fallback_text:
             return fallback_text, "en", "invidious_caption_fallback"
-            
+
         return "", "en", "failed"

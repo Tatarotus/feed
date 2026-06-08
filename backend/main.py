@@ -1,11 +1,9 @@
+from app.config import settings
+from app.database import Base, engine
+from app.routes import channels, debug, feed, interests, queue, search
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
-
-from app.config import settings
-from app.database import engine, Base
-from app import models
-from app.routes import channels, feed, queue, search, interests, debug
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -30,16 +28,24 @@ def init_db():
         conn.commit()
     # Create all tables defined in models.py
     Base.metadata.create_all(bind=engine)
-    
-    # Run auto-migration to add columns to channels if they don't exist
+
+    # Run auto-migration to add columns if they don't exist
     with engine.connect() as conn:
         try:
             conn.execute(text("ALTER TABLE channels ADD COLUMN IF NOT EXISTS is_subscribed BOOLEAN DEFAULT TRUE;"))
             conn.execute(text("ALTER TABLE channels ADD COLUMN IF NOT EXISTS thumbnail_url VARCHAR(512);"))
+
+            # Semantic Energy Economy columns
+            conn.execute(text("ALTER TABLE semantic_mutations ADD COLUMN IF NOT EXISTS energy FLOAT DEFAULT 1.0;"))
+            conn.execute(text("ALTER TABLE semantic_mutations ADD COLUMN IF NOT EXISTS attention_share FLOAT DEFAULT 0.0;"))
+            conn.execute(text("ALTER TABLE semantic_mutations ADD COLUMN IF NOT EXISTS competition_score FLOAT DEFAULT 0.0;"))
+            conn.execute(text("ALTER TABLE semantic_mutations ADD COLUMN IF NOT EXISTS fatigue_multiplier FLOAT DEFAULT 1.0;"))
+            conn.execute(text("ALTER TABLE semantic_mutations ADD COLUMN IF NOT EXISTS last_energy_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"))
+
             conn.commit()
         except Exception as e:
             print(f"Auto-migration note: {e}")
-            
+
     print("Database tables initialized successfully!")
 
 @app.on_event("startup")

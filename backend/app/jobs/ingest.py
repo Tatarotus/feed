@@ -1,13 +1,13 @@
-import logging
 import asyncio
+import logging
 from datetime import datetime, timezone
-from sqlalchemy.orm import Session
+
 from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import Channel, Video
-from app.pipeline.ingestion.rss import RSSProvider
 from app.pipeline.ingestion.invidious import InvidiousProvider
+from app.pipeline.ingestion.rss import RSSProvider
 
 logger = logging.getLogger("jobs.ingest")
 
@@ -25,7 +25,7 @@ def get_provider(provider_name: str):
 async def sync_channel(channel_id: str, force: bool = False) -> int:
     """Sync a single channel using short-lived transactions. Returns number of new videos ingested."""
     now = datetime.now(timezone.utc)
-    
+
     # 1. Fetch channel config in a quick session
     db = SessionLocal()
     try:
@@ -33,7 +33,7 @@ async def sync_channel(channel_id: str, force: bool = False) -> int:
         if not channel:
             logger.error(f"Channel not found in DB: {channel_id}")
             return 0
-        
+
         # Frequency check: skip if not enough minutes have passed since last fetch
         if not force and channel.last_fetched_at:
             elapsed = (now - channel.last_fetched_at).total_seconds() / 60.0
@@ -51,7 +51,7 @@ async def sync_channel(channel_id: str, force: bool = False) -> int:
         db.close()
 
     provider = get_provider(provider_name)
-    
+
     try:
         # 2. Fetch metadata over network WITHOUT any active database session
         videos_metadata, new_etag, new_last_modified = await provider.fetch_channel_videos(
@@ -60,7 +60,7 @@ async def sync_channel(channel_id: str, force: bool = False) -> int:
             etag=etag,
             last_modified=last_modified
         )
-        
+
         if not videos_metadata:
             # Still update the last fetched timestamp to avoid rapid retries
             db = SessionLocal()
@@ -75,7 +75,7 @@ async def sync_channel(channel_id: str, force: bool = False) -> int:
             finally:
                 db.close()
             return 0
-        
+
         new_count = 0
         db = SessionLocal()
         try:
@@ -112,7 +112,7 @@ async def sync_channel(channel_id: str, force: bool = False) -> int:
                 channel.etag = new_etag
             if new_last_modified:
                 channel.last_modified = new_last_modified
-            
+
             db.commit()
             logger.info(f"Channel {channel_title} sync complete. Ingested {new_count} new videos.")
             return new_count

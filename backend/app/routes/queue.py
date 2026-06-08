@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import select, and_
-from typing import List
 from datetime import datetime, timezone
+from typing import List
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import and_, select
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.models import QueueItem, Video, Event
+from app.models import Event, QueueItem, Video
 from app.schemas import QueueItemCreate, QueueItemResponse
 
 router = APIRouter(prefix="/queue", tags=["Queue"])
@@ -43,11 +44,11 @@ def add_to_queue(item_in: QueueItemCreate, db: Session = Depends(get_db)):
             )
         )
     )
-    
+
     if existing:
         if not existing.is_completed:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, 
+                status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Video is already in your active queue."
             )
         # Reactivate completed item
@@ -63,7 +64,7 @@ def add_to_queue(item_in: QueueItemCreate, db: Session = Depends(get_db)):
         video_id=item_in.video_id,
         priority=item_in.priority
     )
-    
+
     # Log telemetry event
     event = Event(
         user_id=1,
@@ -71,11 +72,11 @@ def add_to_queue(item_in: QueueItemCreate, db: Session = Depends(get_db)):
         event_type="queue_add"
     )
     db.add(event)
-    
+
     db.add(queue_item)
     db.commit()
     db.refresh(queue_item)
-    
+
     # Reload with joined relationships
     stmt = (
         select(QueueItem)
@@ -97,13 +98,13 @@ def consume_queue_item(video_id: str, db: Session = Depends(get_db)):
             )
         )
     )
-    
+
     if not item:
         raise HTTPException(status_code=404, detail="Active queue item not found for this video.")
 
     item.is_completed = True
     item.consumed_at = datetime.now(timezone.utc)
-    
+
     # Log telemetry event
     event = Event(
         user_id=1,
@@ -111,7 +112,7 @@ def consume_queue_item(video_id: str, db: Session = Depends(get_db)):
         event_type="queue_consume"
     )
     db.add(event)
-    
+
     db.commit()
     db.refresh(item)
     return item

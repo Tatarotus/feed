@@ -1,11 +1,12 @@
-import logging
 import hashlib
-from typing import List, Dict, Any, Optional
-from sqlalchemy.orm import Session
-from sqlalchemy import select
+import logging
+from typing import Dict, List, Optional
 
-from app.database import SessionLocal
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from app.config import settings
+from app.database import SessionLocal
 from app.models import EmbeddingCache
 from app.services.embedding_provider import NvidiaEmbeddingProvider, OpenAIEmbeddingProvider
 
@@ -14,7 +15,7 @@ logger = logging.getLogger("pipeline.enrichment.embedder")
 class EmbedderService:
     _instance = None
     _provider = None
-    
+
     # High-speed in-memory query embedding cache (avoids DB hits for repeating search queries)
     _query_cache: Dict[str, List[float]] = {}
 
@@ -29,7 +30,7 @@ class EmbedderService:
         if self._provider is None:
             prov_name = settings.EMBEDDING_PROVIDER.lower()
             logger.info(f"Initializing API embedding provider: '{prov_name}' (Model: {settings.EMBEDDING_MODEL})")
-            
+
             if prov_name == "openai":
                 self._provider = OpenAIEmbeddingProvider()
             else:
@@ -50,7 +51,7 @@ class EmbedderService:
             return [0.0] * settings.EMBEDDING_DIM
 
         text_clean = text.strip()
-        
+
         # 1. High-Speed In-Memory Cache Lookup
         if text_clean in self._query_cache:
             logger.debug(f"In-memory query cache HIT for: '{text_clean}'")
@@ -101,9 +102,101 @@ class EmbedderService:
                     cache_db.close()
 
             return vector
-            
+
         except Exception as e:
             logger.error(f"Failed to generate API embedding: {str(e)}")
+            raise e
+
+    def _check_sql_cache(
+        self,
+        texts: List[str],
+        results: List[Optional[List[float]]],
+        hashes: List[str],
+        remainders_indices: List[int],
+        miss_indices: List[int],
+        miss_texts: List[str],
+        miss_hashes: List[str]
+    ):
+        if remainders_indices and settings.EMBEDDING_CACHE_ENABLED:
+            cache_db = SessionLocal()
+            try:
+                remainder_hashes = [hashes[i] for i in remainders_indices]
+                stmt = select(EmbeddingCache).where(EmbeddingCache.text_hash.in_(remainder_hashes))
+                cached_records = cache_db.scalars(stmt).all()
+
+                cache_map = {rec.text_hash: rec.embedding for rec in cached_records}
+
+                for idx in remainders_indices:
+                    text_hash = hashes[idx]
+                    text_clean = texts[idx].strip()
+                    if text_hash in cache_map:
+                        vector = cache_map[text_hash]
+                        results[idx] = vector
+                        self._query_cache[text_clean] = vector
+                    else:
+                        miss_indices.append(idx)
+                        miss_texts.append(texts[idx])
+                        miss_hashes.append(text_hash)
+
+                logger.info(f"Batch cache lookup complete. hits: {len(cached_records)}, misses: {len(miss_indices)}")
+            except Exception as cache_err:
+                logger.warning(f"SQL batch cache read failed (non-blocking): {str(cache_err)}")
+                for idx in remainders_indices:
+                    miss_indices.append(idx)
+                    miss_texts.append(texts[idx])
+                    miss_hashes.append(hashes[idx])
+            finally:
+                cache_db.close()
+        else:
+            for idx in remainders_indices:
+                miss_indices.append(idx)
+                miss_texts.append(texts[idx])
+                miss_hashes.append(hashes[idx])
+
+    async def _fetch_and_cache_misses(
+        self,
+        results: List[Optional[List[float]]],
+        input_type: str,
+        miss_indices: List[int],
+        miss_texts: List[str],
+        miss_hashes: List[str]
+    ):
+        if not miss_texts:
+            return
+
+        try:
+            api_vectors = await self.provider.embed(miss_texts, input_type=input_type)
+            new_cache_rows = []
+            for idx, vector in enumerate(api_vectors):
+                orig_idx = miss_indices[idx]
+                results[orig_idx] = vector
+                text_clean = miss_texts[idx].strip()
+
+                self._query_cache[text_clean] = vector
+
+                if settings.EMBEDDING_CACHE_ENABLED:
+                    new_cache_rows.append(
+                        EmbeddingCache(
+                            text_hash=miss_hashes[idx],
+                            provider=settings.EMBEDDING_PROVIDER,
+                            model=settings.EMBEDDING_MODEL,
+                            embedding=vector
+                        )
+                    )
+
+            if settings.EMBEDDING_CACHE_ENABLED and new_cache_rows:
+                cache_db = SessionLocal()
+                try:
+                    cache_db.add_all(new_cache_rows)
+                    cache_db.commit()
+                    logger.info(f"Bulk saved {len(new_cache_rows)} new vectors to SQL cache.")
+                except Exception as cache_err:
+                    cache_db.rollback()
+                    logger.warning(f"Bulk cache save failed (non-blocking): {str(cache_err)}")
+                finally:
+                    cache_db.close()
+        except Exception as e:
+            logger.error(f"Batch API embedding request failed: {str(e)}")
             raise e
 
     async def generate_embeddings_batch(self, texts: List[str], db: Optional[Session] = None, input_type: str = "passage") -> List[List[float]]:
@@ -116,7 +209,7 @@ class EmbedderService:
 
         results: List[Optional[List[float]]] = [None] * len(texts)
         hashes = [self.compute_hash(t.strip()) for t in texts]
-        
+
         miss_indices: List[int] = []
         miss_texts: List[str] = []
         miss_hashes: List[str] = []
@@ -127,89 +220,13 @@ class EmbedderService:
             if text_clean in self._query_cache:
                 results[idx] = self._query_cache[text_clean]
 
-        # Bulk SQL Database Cache Query for remainders (using short-lived session)
         remainders_indices = [i for i, v in enumerate(results) if v is None]
-        
-        if remainders_indices and settings.EMBEDDING_CACHE_ENABLED:
-            cache_db = SessionLocal()
-            try:
-                remainder_hashes = [hashes[i] for i in remainders_indices]
-                stmt = select(EmbeddingCache).where(EmbeddingCache.text_hash.in_(remainder_hashes))
-                cached_records = cache_db.scalars(stmt).all()
-                
-                cache_map = {rec.text_hash: rec.embedding for rec in cached_records}
-                
-                for idx in remainders_indices:
-                    text_hash = hashes[idx]
-                    text_clean = texts[idx].strip()
-                    if text_hash in cache_map:
-                        vector = cache_map[text_hash]
-                        results[idx] = vector
-                        self._query_cache[text_clean] = vector  # Cache in-memory
-                    else:
-                        miss_indices.append(idx)
-                        miss_texts.append(texts[idx])
-                        miss_hashes.append(text_hash)
-                        
-                logger.info(f"Batch cache lookup complete. hits: {len(cached_records)}, misses: {len(miss_indices)}")
-            except Exception as cache_err:
-                logger.warning(f"SQL batch cache read failed (non-blocking): {str(cache_err)}")
-                # Treat all remainders as misses
-                for idx in remainders_indices:
-                    miss_indices.append(idx)
-                    miss_texts.append(texts[idx])
-                    miss_hashes.append(hashes[idx])
-            finally:
-                cache_db.close()
-        else:
-            # If no hits, populate miss index lists for remainders
-            for idx in remainders_indices:
-                miss_indices.append(idx)
-                miss_texts.append(texts[idx])
-                miss_hashes.append(hashes[idx])
-
-        # Request Cache Misses from API in batch (WITHOUT active database connection)
-        if miss_texts:
-            try:
-                api_vectors = await self.provider.embed(miss_texts, input_type=input_type)
-                
-                new_cache_rows = []
-                for idx, vector in enumerate(api_vectors):
-                    orig_idx = miss_indices[idx]
-                    results[orig_idx] = vector
-                    text_clean = miss_texts[idx].strip()
-                    
-                    self._query_cache[text_clean] = vector  # Cache in-memory
-                    
-                    if settings.EMBEDDING_CACHE_ENABLED:
-                        new_cache_rows.append(
-                            EmbeddingCache(
-                                text_hash=miss_hashes[idx],
-                                provider=settings.EMBEDDING_PROVIDER,
-                                model=settings.EMBEDDING_MODEL,
-                                embedding=vector
-                            )
-                        )
-                
-                if settings.EMBEDDING_CACHE_ENABLED and new_cache_rows:
-                    cache_db = SessionLocal()
-                    try:
-                        cache_db.add_all(new_cache_rows)
-                        cache_db.commit()
-                        logger.info(f"Bulk saved {len(new_cache_rows)} new vectors to SQL cache.")
-                    except Exception as cache_err:
-                        cache_db.rollback()
-                        logger.warning(f"Bulk cache save failed (non-blocking): {str(cache_err)}")
-                    finally:
-                        cache_db.close()
-
-            except Exception as e:
-                logger.error(f"Batch API embedding request failed: {str(e)}")
-                raise e
+        self._check_sql_cache(texts, results, hashes, remainders_indices, miss_indices, miss_texts, miss_hashes)
+        await self._fetch_and_cache_misses(results, input_type, miss_indices, miss_texts, miss_hashes)
 
         # Final check & fallback mapping
         final_vectors: List[List[float]] = []
-        for idx, vec in enumerate(results):
+        for vec in results:
             if vec is None:
                 final_vectors.append([0.0] * settings.EMBEDDING_DIM)
             else:

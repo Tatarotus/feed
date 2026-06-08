@@ -1,6 +1,8 @@
-from pydantic import BaseModel, HttpUrl, Field
-from typing import List, Optional, Dict, Any
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
+
 
 # --- Channels ---
 class ChannelBase(BaseModel):
@@ -105,6 +107,8 @@ class ScoreBreakdown(BaseModel):
     clickbait_penalty: float
     negative_demotion: float
     freshness_decay: float
+    repeat_penalty: float = 0.0
+
 
 class FeedItemResponse(BaseModel):
     video: VideoResponse
@@ -136,3 +140,28 @@ class LikedVideoResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class SemanticMutationResponse(BaseModel):
+    id: int
+    parent_topic: str
+    mutation_topic: str
+    similarity_score: float
+    confidence_score: float
+    telemetry_score: float
+    survival_score: float
+    generation_depth: int
+    status: str
+
+    # Semantic Energy Economy fields
+    energy: float
+    attention_share: float
+    competition_score: float
+    fatigue_multiplier: float
+
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+

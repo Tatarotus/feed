@@ -1,12 +1,12 @@
-import logging
 import asyncio
-import httpx
+import logging
 from datetime import datetime, timezone
-from sqlalchemy.orm import Session
+
+import httpx
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import Interest, Channel, Video
+from app.models import Channel, Interest, Video
 
 logger = logging.getLogger("jobs.discovery")
 
@@ -34,7 +34,7 @@ async def search_invidious_videos(query: str, limit: int = 5) -> list:
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "application/json"
     }
-    
+
     for instance_url in INVIDIOUS_INSTANCES:
         api_url = f"{instance_url.rstrip('/')}/api/v1/search"
         logger.info(f"Attempting search on Invidious instance: {instance_url}...")
@@ -52,7 +52,7 @@ async def search_invidious_videos(query: str, limit: int = 5) -> list:
                     logger.warning(f"Instance {instance_url} returned HTTP {response.status_code} for query '{query}'")
         except Exception as e:
             logger.warning(f"Search request to Invidious instance {instance_url} failed: {str(e)}")
-            
+
     logger.error(f"All Invidious search instances failed for query '{query}'")
     return []
 
@@ -67,10 +67,10 @@ async def fetch_channel_avatar(channel_id: str) -> str:
             if r.status_code == 200:
                 data = r.json()
                 fetched = [
-                    inst[1].get("uri") for inst in data 
-                    if inst[1].get("type") == "https" 
-                    and inst[1].get("monitor") 
-                    and inst[1].get("monitor", {}).get("last_status") == 200 
+                    inst[1].get("uri") for inst in data
+                    if inst[1].get("type") == "https"
+                    and inst[1].get("monitor")
+                    and inst[1].get("monitor", {}).get("last_status") == 200
                     and not inst[1].get("monitor", {}).get("down")
                 ]
                 for uri in fetched:
@@ -83,7 +83,7 @@ async def fetch_channel_avatar(channel_id: str) -> str:
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "application/json"
     }
-    
+
     for instance_url in instances:
         api_url = f"{instance_url.rstrip('/')}/api/v1/channels/{channel_id}"
         try:
@@ -100,15 +100,10 @@ async def fetch_channel_avatar(channel_id: str) -> str:
                             elif url.startswith("/"):
                                 return f"{instance_url.rstrip('/')}{url}"
                             return url
-        except Exception as e:
+        except Exception:
             pass
     return None
 
-async def run_discovery():
-    """
-    Background job that automatically queries Invidious search for user interest topics,
-    discovers out-of-network channels/videos, and inserts them in a pending state.
-    """
 async def run_discovery():
     """
     Sweeps the web for channels and videos matching followed topics,
@@ -134,7 +129,7 @@ async def run_discovery():
     total_discovered_videos = 0
     total_discovered_channels = 0
 
-    for interest_id, topic in topic_queries:
+    for _interest_id, topic in topic_queries:
         topic_query = topic
         if topic_query.startswith("Seed:"):
             topic_query = topic_query.replace("Seed:", "").strip()
@@ -145,7 +140,7 @@ async def run_discovery():
         except Exception as e:
             logger.error(f"Failed to search videos for topic '{topic_query}': {str(e)}")
             continue
-        
+
         for item in discovered_items:
             video_id = item.get("videoId")
             if not video_id:
@@ -204,7 +199,7 @@ async def run_discovery():
                 if not existing_video:
                     title = item.get("title", "Untitled Discovered Video")
                     description = item.get("description", "")
-                    
+
                     published_timestamp = item.get("published")
                     try:
                         publish_date = datetime.fromtimestamp(published_timestamp, tz=timezone.utc)
@@ -232,7 +227,7 @@ async def run_discovery():
                     )
                     db.add(new_video)
                     total_discovered_videos += 1
-                
+
                 db.commit()
             except Exception as e:
                 db.rollback()

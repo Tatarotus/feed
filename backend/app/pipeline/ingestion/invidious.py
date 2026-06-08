@@ -1,9 +1,10 @@
 import logging
-from typing import List, Dict, Any, Tuple
-import httpx
 from datetime import datetime
+from typing import List, Tuple
 
-from app.pipeline.ingestion.base import VideoSource, VideoMetadata
+import httpx
+
+from app.pipeline.ingestion.base import VideoMetadata, VideoSource
 
 logger = logging.getLogger(__name__)
 
@@ -27,23 +28,23 @@ class InvidiousProvider(VideoSource):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Accept": "application/json"
         }
-        
+
         if etag:
             headers["If-None-Match"] = etag
 
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 response = await client.get(api_url, headers=headers)
-                
+
                 if response.status_code == 304:
                     logger.info(f"Invidious channel {channel_id} feed unchanged (304).")
                     return [], etag, last_modified
 
                 response.raise_for_status()
-                
+
                 new_etag = response.headers.get("ETag")
                 new_last_modified = response.headers.get("Last-Modified")
-                
+
                 videos_json = response.json()
                 if not isinstance(videos_json, list):
                     logger.warning(f"Invidious API returned unexpected structure for {channel_id}")
@@ -57,7 +58,7 @@ class InvidiousProvider(VideoSource):
 
                     title = item.get("title", "Untitled Invidious Video")
                     description = item.get("description", "")
-                    
+
                     # Date parsing
                     published_timestamp = item.get("published")
                     try:

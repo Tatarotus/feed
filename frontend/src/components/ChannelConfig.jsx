@@ -113,6 +113,14 @@ export default function ChannelConfig({ onSyncComplete, serendipity = 0.2, onSer
 
   useEffect(() => {
     loadSettings();
+
+    const handleSubChange = () => {
+      loadSettings();
+    };
+    window.addEventListener('channel-subscription-changed', handleSubChange);
+    return () => {
+      window.removeEventListener('channel-subscription-changed', handleSubChange);
+    };
   }, []);
 
   const handleAddChannel = async (e) => {

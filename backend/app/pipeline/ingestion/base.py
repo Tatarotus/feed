@@ -1,5 +1,6 @@
-from typing import Protocol, List, Dict, Any
 from datetime import datetime
+from typing import Any, Dict, List, Protocol
+
 
 class VideoMetadata:
     def __init__(
@@ -36,7 +37,7 @@ class VideoSource(Protocol):
     ) -> tuple[List[VideoMetadata], str, str]:
         """
         Fetch the latest videos from a channel.
-        
+
         Returns:
             Tuple of (List of VideoMetadata parsed, new_etag, new_last_modified)
         """

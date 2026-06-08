@@ -33,13 +33,13 @@ def chunk_text(
     while i < total_words:
         # Create sliding window slice
         chunk_words = words[i : i + chunk_size]
-        
+
         # Guard against trailing microscopic chunks at the tail end
         if len(chunk_words) < min_chunk_len:
             break
-            
+
         chunks.append(" ".join(chunk_words))
-        
+
         # Advance index by step size (chunk_size minus the overlap)
         i += (chunk_size - overlap)
 

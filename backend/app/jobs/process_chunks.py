@@ -1,14 +1,14 @@
-import logging
 import asyncio
-from sqlalchemy.orm import Session
-from sqlalchemy import select, and_
+import logging
 
+from sqlalchemy import and_, select
+
+from app.config import settings
 from app.database import SessionLocal
 from app.models import Video, VideoChunk
 from app.pipeline.ingestion.transcripts import fetch_transcript
-from app.pipeline.processing.cleaning import clean_and_normalize_text
 from app.pipeline.processing.chunker import chunk_text
-from app.config import settings
+from app.pipeline.processing.cleaning import clean_and_normalize_text
 
 logger = logging.getLogger("jobs.process_chunks")
 
@@ -30,22 +30,22 @@ async def process_video_transcript(video_id: str) -> bool:
         db.close()
 
     logger.info(f"Processing transcript for video: {video_title} ({video_id})")
-    
+
     try:
         # 2. Crawl transcript over network WITHOUT any open DB transaction
         transcript_text, lang_code, source = await fetch_transcript(video_id)
-        
+
         # Concat title + description + transcript for rich deep-search normalized text
         rich_raw_text = f"Title: {video_title}. Description: {video_description or ''}."
         if transcript_text:
             rich_raw_text += f" Transcript: {transcript_text}"
-            
+
         # Standardize and sanitize text (stripping HTML, normalizing spaces)
         normalized_text = clean_and_normalize_text(rich_raw_text)
-        
+
         # Generate token chunks
         chunks = chunk_text(normalized_text, chunk_size=500, overlap=50)
-        
+
         # 3. Write updates and chunks in a quick DB session
         db = SessionLocal()
         try:
@@ -55,11 +55,11 @@ async def process_video_transcript(video_id: str) -> bool:
                 return False
 
             video.normalized_text = normalized_text
-            
+
             if chunks:
                 # Delete any prior chunks if we are reprocessing
                 db.query(VideoChunk).filter(VideoChunk.video_id == video_id).delete()
-                
+
                 # Bulk create chunks to prevent database roundtrips
                 db_chunks = []
                 for idx, text in enumerate(chunks):
@@ -97,7 +97,7 @@ async def process_video_transcript(video_id: str) -> bool:
             if video:
                 video.retry_count += 1
                 video.processing_error = str(e)
-                
+
                 if video.retry_count >= settings.MAX_PROCESSING_RETRIES:
                     video.processing_status = "failed"
                     logger.error(f"Video {video_id} processing failed permanently after {video.retry_count} retries: {str(e)}")
@@ -132,7 +132,7 @@ async def run_chunk_processing():
         return
     finally:
         db.close()
-        
+
     if not pending_video_ids:
         logger.debug("No pending videos for transcript chunking.")
         return

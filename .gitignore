@@ -31,3 +31,6 @@ db_data/
 logs/
 *.db
 .antigravitycli/
+mutants/
+.mutmut-cache
+

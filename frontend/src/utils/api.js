@@ -27,6 +27,7 @@ async function request(endpoint, options = {}) {
 export const api = {
   // Feed Recommendations
   getFeed: (limit = 30, serendipity = 0.2) => request(`/feed?limit=${limit}&serendipity=${serendipity}`),
+  getShortsFeed: (limit = 30, serendipity = 0.2) => request(`/feed/shorts?limit=${limit}&serendipity=${serendipity}`),
 
   // Channel Subscriptions
   getChannels: () => request("/channels"),
@@ -75,6 +76,7 @@ export const api = {
     method: "POST",
     body: JSON.stringify(seedData)
   }),
+  getMutations: () => request("/interests/mutations"),
 
   // Diagnostics & Logs
   explainScoring: (videoId) => request(`/debug/explain/${videoId}`),
