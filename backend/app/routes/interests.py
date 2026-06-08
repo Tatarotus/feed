@@ -1,5 +1,8 @@
+import logging
+import re
 from typing import List
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
@@ -71,7 +74,7 @@ async def follow_topic(interest_in: InterestCreate, db: Session = Depends(get_db
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate embedding for topic: {str(e)}"
-        )
+        ) from e
 
 @router.delete("/{interest_id}", status_code=status.HTTP_204_NO_CONTENT)
 def unfollow_topic(interest_id: int, db: Session = Depends(get_db)):
@@ -98,10 +101,6 @@ def update_interest_weight(interest_id: int, body: InterestUpdate, db: Session =
     db.refresh(interest)
     return interest
 
-import logging
-import re
-
-import httpx
 
 logger = logging.getLogger("routes.interests")
 
@@ -237,4 +236,4 @@ async def add_manual_seed(seed_in: SeedCreate, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate vector embedding for manual seed: {str(e)}"
-        )
+        ) from e

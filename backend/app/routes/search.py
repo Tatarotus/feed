@@ -89,4 +89,4 @@ async def search_videos(q: str, limit: int = 25, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Search failed: {str(e)}"
-        )
+        ) from e

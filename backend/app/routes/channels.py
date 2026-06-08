@@ -1,5 +1,7 @@
+import re
 from typing import List
 
+import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -19,9 +21,6 @@ def list_channels(db: Session = Depends(get_db)):
         .where(Channel.is_subscribed == True)
         .order_by(Channel.title.asc())
     ).all()
-
-import httpx
-
 
 async def fetch_channel_avatar(channel_id: str) -> str:
     """
@@ -75,9 +74,6 @@ async def fetch_channel_avatar(channel_id: str) -> str:
         except Exception:
             pass
     return None
-
-import re
-
 
 async def resolve_youtube_channel(user_input: str) -> tuple[str, str]:
     """
@@ -196,7 +192,7 @@ async def resolve_youtube_channel(user_input: str) -> tuple[str, str]:
                 except Exception:
                     pass
 
-        raise ValueError(f"Failed to resolve YouTube channel: {str(e)}")
+        raise ValueError(f"Failed to resolve YouTube channel: {str(e)}") from e
 
 @router.post("", response_model=ChannelResponse, status_code=status.HTTP_201_CREATED)
 async def create_channel(channel_in: ChannelCreate, db: Session = Depends(get_db)):
@@ -207,7 +203,7 @@ async def create_channel(channel_in: ChannelCreate, db: Session = Depends(get_db
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to resolve YouTube channel: {str(e)}"
-        )
+        ) from e
 
     existing = db.scalar(select(Channel).where(Channel.id == resolved_id))
     if existing:

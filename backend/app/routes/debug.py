@@ -1,3 +1,4 @@
+import logging
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import and_, select
@@ -54,7 +55,6 @@ def manual_pipeline_trigger(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_pipeline_sweep)
     return {"message": "Coordinated pipeline sweep task queued successfully in background."}
 
-import logging
 
 logger = logging.getLogger("routes.debug")
 
